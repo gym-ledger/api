@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    id SERIAL PRIMARY KEY,
+
+    filename VARCHAR(255) NOT NULL UNIQUE,
+
+    executed_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

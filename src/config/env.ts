@@ -22,6 +22,8 @@ const envSchema = z.object({
         "debug",
         "trace"
     ]).default("info"),
+
+    OTP_SALT: z.string().min(1),
 });
 
 const parsed = envSchema.safeParse(process.env);
