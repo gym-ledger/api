@@ -23,7 +23,8 @@ const envSchema = z.object({
         "trace"
     ]).default("info"),
 
-    OTP_SALT: z.string().min(1),
+    ACCESS_TOKEN_SECRET: z.string().min(10),
+    REFRESH_TOKEN_SECRET: z.string().min(10),
 });
 
 const parsed = envSchema.safeParse(process.env);

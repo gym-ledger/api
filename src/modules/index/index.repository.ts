@@ -33,7 +33,7 @@ export const fetchManyFromTable = async ({
     );
 
     if (useSoftDelete) {
-        conditions.push("is_deleted = false");
+        conditions.push("deleted_at IS NULL");
     }
 
     const sortByClause = sortBy ? `ORDER BY ${Object.entries(sortBy).map(([key, value]) => `${key} ${value}`).join(", ")}` : "";
@@ -84,7 +84,7 @@ export const fetchOneFromTable = async ({
     );
 
     if (useSoftDelete) {
-        conditions.push("is_deleted = false");
+        conditions.push("deleted_at IS NULL");
     }
 
     const selectClause = select ? `SELECT ${select.join(", ")}` : "SELECT *";
@@ -143,6 +143,66 @@ export const updateOneInTable = async ({
     data: Record<string, unknown>;
     filter?: Record<string, unknown>;
 }): Promise<unknown> => {
+
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+
+    // WHERE clause
+    Object.entries(filter ?? {}).forEach(
+        ([key, value], index) => {
+            values.push(value);
+
+            conditions.push(
+                `${key} = $${index + 1}`
+            );
+        }
+    );
+
+    // SET clause
+    const setClause = Object.keys(data)
+        .map((key, index) =>
+            `${key} = $${values.length + index + 1}`
+        )
+        .join(", ");
+
+    const whereClause = conditions.length
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+    const query = `
+        UPDATE ${table}
+        SET ${setClause}
+        ${whereClause}
+        RETURNING *
+    `;
+
+    try {
+        const result = await pg.query(
+            query,
+            [...values, ...Object.values(data)]
+        );
+
+        return result.rows[0];
+
+    } catch (error) {
+        console.log(data);
+        console.log(query);
+        console.log(values);
+        console.log(error);
+
+        throw error;
+    }
+};
+
+export const deleteOneFromTable = async ({
+    table,
+    filter,
+    useSoftDelete = true,
+}: {
+    table: string;
+    filter?: Record<string, unknown>;
+    useSoftDelete?: boolean;
+}): Promise<unknown> => {
     const values: unknown[] = [];
     const conditions: string[] = [];
 
@@ -155,17 +215,17 @@ export const updateOneInTable = async ({
             );
         }
     );
-
-    const setClause = Object.keys(data).map((key) => `${key} = $${values.length + 1}`).join(", ");
-
     const whereClause = conditions.length
-        ? `WHERE ${conditions.join(" AND ")}`
-        : "";
+        ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    const query = `
-      UPDATE ${table} SET ${setClause} ${whereClause} RETURNING *
-    `;
+    if (useSoftDelete) {
 
-    const result = await pg.query(query, [...Object.values(data), ...values]);
-    return result.rows[0];
+        const query = `UPDATE ${table} SET deleted_at = NOW() ${whereClause} RETURNING *`;
+        const result = await pg.query(query, values);
+        return result.rows[0];
+    } else {
+        const query = `DELETE FROM ${table} ${whereClause} RETURNING *`;
+        const result = await pg.query(query, values);
+        return result.rows[0];
+    }
 }

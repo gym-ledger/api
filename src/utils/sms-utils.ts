@@ -5,6 +5,5 @@ export const sendSMS = async (phoneNumber: string, otp: string, template: string
     //     template,
     // });
     // return response.data;
-
-
 }
+

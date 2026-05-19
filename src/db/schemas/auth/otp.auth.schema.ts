@@ -24,7 +24,7 @@ export interface OtpAuthInterface {
 
     attempts: number;
 
-    is_deleted: boolean;
+    deleted_at: Date;
 
     created_at: Date;
 
@@ -71,9 +71,22 @@ export const OTP_AUTH_SCHEMA = {
         type: "number",
         default: 0,
     },
-    is_deleted: {
-        type: "boolean",
-        required: true,
+    deleted_at: {
+        type: "date",
+        allowNull: true,
+    },
+    created_at: {
+        type: "date",
+        default: new Date(),
         allowNull: false,
     },
-};
+    updated_at: {
+        type: "date",
+        default: new Date(),
+        allowNull: false,
+    },
+    last_attempted_at: {
+        type: "date",
+        allowNull: true,
+    },
+}

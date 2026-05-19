@@ -13,6 +13,15 @@ export const pg = new Pool({
     connectionTimeoutMillis: 5000,
 });
 
+pg.on("connect", async (client) => {
+    await client.query(`
+        SET TIME ZONE 'UTC'
+    `);
+    await client.query(`
+        SET statement_timeout = '30s'
+    `);
+});
+
 export async function connectPostgres() {
     try {
         const client = await pg.connect();
@@ -36,3 +45,6 @@ export async function connectPostgres() {
         throw error;
     }
 }
+process.on("SIGTERM", async () => {
+    await pg.end();
+});

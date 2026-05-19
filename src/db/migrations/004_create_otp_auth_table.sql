@@ -8,31 +8,29 @@ CREATE TABLE IF NOT EXISTS otp_auth (
 
     phone_number VARCHAR(20),
 
-    email VARCHAR(255),
+    email CITEXT,
 
     -- TEMPORARY FOR DEV
     otp VARCHAR(10) NOT NULL,
 
     otp_hash TEXT NOT NULL,
 
-    generated_at TIMESTAMP NOT NULL
+    generated_at TIMESTAMPTZ NOT NULL
         DEFAULT NOW(),
 
-    expires_at TIMESTAMP NOT NULL
+    expires_at TIMESTAMPTZ NOT NULL
         DEFAULT NOW() + INTERVAL '5 minutes',
 
     attempts INTEGER NOT NULL
         DEFAULT 0
         CHECK (attempts >= 0),
 
-    is_deleted BOOLEAN NOT NULL
-        DEFAULT false,
+    deleted_at TIMESTAMPTZ,
 
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMPTZ NOT NULL
         DEFAULT NOW(),
 
-    updated_at TIMESTAMP NOT NULL
-        DEFAULT NOW(),
+    last_attempted_at TIMESTAMPTZ,
 
     CHECK (
         (
@@ -52,15 +50,16 @@ CREATE TABLE IF NOT EXISTS otp_auth (
 );
 
 CREATE INDEX IF NOT EXISTS idx_otp_auth_email
-ON otp_auth(method, email, is_deleted);
+ON otp_auth(email)
+WHERE deleted_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_otp_auth_phone
 ON otp_auth(
-    method,
     phone_country_code,
-    phone_number,
-    is_deleted
-);
+    phone_number
+)
+WHERE deleted_at IS NULL;
 
-CREATE INDEX IF NOT EXISTS idx_otp_auth_expires_at
-ON otp_auth(is_deleted, expires_at);
+CREATE INDEX IF NOT EXISTS idx_otp_auth_expiry
+ON otp_auth(expires_at)
+WHERE deleted_at IS NULL;

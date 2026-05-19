@@ -1,0 +1,55 @@
+export const USERS_TABLE = "users";
+
+export interface UsersInterface {
+    id: string;
+
+    phone_country_code: string;
+
+    phone_number: string;
+
+    email: string;
+
+    password_hash: string;
+
+    deleted_at: Date;
+
+    created_at: Date;
+
+    updated_at: Date;
+}
+
+export const USERS_SCHEMA = {
+    id: {
+        type: "string",
+        primaryKey: true,
+        unique: true,
+    },
+    phone_country_code: {
+        type: "string",
+        allowNull: true,
+    },
+    phone_number: {
+        type: "string",
+        allowNull: true,
+    },
+    email: {
+        type: "string",
+        allowNull: true,
+    },
+    password_hash: {
+        type: "string",
+        allowNull: true,
+    },
+    deleted_at: {
+        type: "date",
+        allowNull: true,
+    },
+    created_at: {
+        type: "date",
+        allowNull: false,
+    },
+    updated_at: {
+        type: "date",
+        allowNull: false,
+    },
+}
