@@ -16,6 +16,9 @@ CREATE TABLE progression_rules (
 
     config JSONB NOT NULL,
 
+    added_by_admin_user_id UUID
+        REFERENCES admin_users(id),
+
     deleted_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL
