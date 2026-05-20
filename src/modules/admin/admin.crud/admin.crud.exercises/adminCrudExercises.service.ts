@@ -106,6 +106,13 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
         if (!slug) {
             throw new AppError("Failed to generate slug. Choose a different name.", 400);
         }
+        const otherDuplicateBySlug = await fetchOneFromTable({
+            table: EXERCISES_TABLE,
+            filter: { slug, id: { $ne: id } },
+        }) as ExercisesInterface;
+        if (otherDuplicateBySlug) {
+            throw new AppError("Exercise with this slug already exists", 400);
+        }
         toUpdate.slug = slug;
         toUpdate.name = name;
     }

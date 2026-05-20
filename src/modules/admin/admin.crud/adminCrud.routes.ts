@@ -15,6 +15,13 @@ import {
     updateExerciseForAdmin,
     deleteExerciseForAdmin,
 } from './admin.crud.exercises/adminCrudExercises.controller.js';
+import {
+    listProgressionRulesForAdmin,
+    viewProgressionRuleForAdmin,
+    createProgressionRuleForAdmin,
+    updateProgressionRuleForAdmin,
+    deleteProgressionRuleForAdmin,
+} from './admin.crud.progressionRules/adminCrudProgressionRules.controller.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -31,6 +38,13 @@ adminCrudRouter.get("/exercises/view/:id", asyncHandler(viewExerciseForAdmin));
 adminCrudRouter.post("/exercises/create", upload.single("image"), asyncHandler(createExerciseForAdmin));
 adminCrudRouter.put("/exercises/update/:id", upload.single("image"), asyncHandler(updateExerciseForAdmin));
 adminCrudRouter.delete("/exercises/delete/:id", asyncHandler(deleteExerciseForAdmin));
+
+// progression rules
+adminCrudRouter.get("/progression-rules/list", asyncHandler(listProgressionRulesForAdmin));
+adminCrudRouter.get("/progression-rules/view/:id", asyncHandler(viewProgressionRuleForAdmin));
+adminCrudRouter.post("/progression-rules/create", asyncHandler(createProgressionRuleForAdmin));
+adminCrudRouter.put("/progression-rules/update/:id", asyncHandler(updateProgressionRuleForAdmin));
+adminCrudRouter.delete("/progression-rules/delete/:id", asyncHandler(deleteProgressionRuleForAdmin));
 
 // workout programs
 adminCrudRouter.get("/workout-programs/list", asyncHandler(listWorkoutProgramsForAdmin));
