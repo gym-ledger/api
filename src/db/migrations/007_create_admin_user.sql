@@ -14,7 +14,7 @@ CREATE TABLE admin_users (
         DEFAULT NOW(),
 
     updated_at TIMESTAMPTZ NOT NULL
-        DEFAULT NOW(),
+        DEFAULT NOW()
 
 );
 
