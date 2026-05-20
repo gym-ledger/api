@@ -107,6 +107,7 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
             throw new AppError("Failed to generate slug. Choose a different name.", 400);
         }
         toUpdate.slug = slug;
+        toUpdate.name = name;
     }
     if (description) {
         toUpdate.description = description;
