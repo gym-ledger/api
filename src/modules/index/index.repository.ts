@@ -1,5 +1,14 @@
 import { pg } from "../../infrastructure/postgres/index.js";
 
+export type IFilter = Record<
+    string,
+    | unknown
+    | {
+        operator: "=" | "!=";
+        value: unknown;
+    }
+>
+
 export const fetchPaginatedResultsFromTable = async ({
     table,
     filter,
@@ -156,52 +165,92 @@ export const fetchOneFromTable = async ({
     useSoftDelete = true,
 }: {
     table: string;
-    filter?: Record<string, unknown>;
+    filter?: IFilter;
     select?: string[];
     sortBy?: Record<string, "asc" | "desc">;
     useSoftDelete?: boolean;
 }): Promise<unknown> => {
     const values: unknown[] = [];
+
     const conditions: string[] = [];
 
     Object.entries(filter ?? {}).forEach(
-        ([key, value], index) => {
+        ([key, rawValue]) => {
+            let operator = "=";
+
+            let value = rawValue;
+
+            if (
+                typeof rawValue === "object"
+                && rawValue !== null
+                && "operator" in rawValue
+                && "value" in rawValue
+            ) {
+                operator = rawValue.operator;
+
+                value = rawValue.value;
+            }
+
             values.push(value);
 
             conditions.push(
-                `${key} = $${index + 1}`
+                `${key} ${operator} $${values.length
+                }`
             );
         }
     );
 
     if (useSoftDelete) {
-        conditions.push("deleted_at IS NULL");
+        conditions.push(
+            "deleted_at IS NULL"
+        );
     }
 
-    const selectClause = select ? `SELECT ${select.join(", ")}` : "SELECT *";
+    const selectClause = select
+        ? `SELECT ${select.join(", ")}`
+        : "SELECT *";
 
-    const sortByClause = sortBy ? `ORDER BY ${Object.entries(sortBy).map(([key, value]) => `${key} ${value}`).join(", ")}` : "";
-
-    const whereClause = conditions.length
-        ? `WHERE ${conditions.join(" AND ")}`
+    const sortByClause = sortBy
+        ? `ORDER BY ${Object.entries(
+            sortBy
+        )
+            .map(
+                ([key, value]) =>
+                    `${key} ${value}`
+            )
+            .join(", ")}`
         : "";
 
+    const whereClause =
+        conditions.length
+            ? `WHERE ${conditions.join(
+                " AND "
+            )}`
+            : "";
+
     const query = `
-      ${selectClause}
-      FROM ${table}
-      ${whereClause}
-      ${sortByClause}
+        ${selectClause}
+        FROM ${table}
+        ${whereClause}
+        ${sortByClause}
+        LIMIT 1
     `;
+
     try {
-        const result =
-            await pg.query(query, values);
+        const result = await pg.query(
+            query,
+            values
+        );
 
         return result.rows[0];
     } catch (error) {
         console.log(query);
+
         console.log(error);
+
         throw error;
     }
+
 }
 
 export const addOneInTable = async ({

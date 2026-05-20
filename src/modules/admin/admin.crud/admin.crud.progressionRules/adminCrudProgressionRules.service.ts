@@ -98,7 +98,7 @@ export const updateProgressionRuleForAdminService = async (data: { id: string, n
     if (name) {
         const otherDuplicateByName = await fetchOneFromTable({
             table: PROGRESSION_RULES_TABLE,
-            filter: { name, id: { $ne: id } },
+            filter: { name, id: { operator: "!=", value: id } },
         }) as ProgressionRulesInterface;
         if (otherDuplicateByName) {
             throw new AppError("Progression rule with this name already exists", 400);

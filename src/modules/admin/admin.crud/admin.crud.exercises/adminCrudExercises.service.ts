@@ -108,7 +108,7 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
         }
         const otherDuplicateBySlug = await fetchOneFromTable({
             table: EXERCISES_TABLE,
-            filter: { slug, id: { $ne: id } },
+            filter: { slug, id: { operator: "!=", value: id } },
         }) as ExercisesInterface;
         if (otherDuplicateBySlug) {
             throw new AppError("Exercise with this slug already exists", 400);
