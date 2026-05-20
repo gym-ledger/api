@@ -7,12 +7,14 @@ import {
     createWorkoutProgramForAdmin,
     updateWorkoutProgramForAdmin,
     deleteWorkoutProgramForAdmin,
+} from './adminCrud.controller.js';
+import {
     listExercisesForAdmin,
     viewExerciseForAdmin,
     createExerciseForAdmin,
     updateExerciseForAdmin,
     deleteExerciseForAdmin,
-} from './adminCrud.controller.js';
+} from './admin.crud.exercises/adminCrudExercises.controller.js';
 
 const upload = multer({
     storage: multer.memoryStorage(),
