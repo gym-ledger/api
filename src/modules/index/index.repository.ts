@@ -1,26 +1,33 @@
 import { pg } from "../../infrastructure/postgres/index.js";
 
-export const fetchManyFromTable = async ({
+export const fetchPaginatedResultsFromTable = async ({
     table,
     filter,
     select,
     sortBy,
-    limit,
-    offset,
     useSoftDelete = true,
+    limit = 10,
+    page = 1,
 }: {
     table: string;
     filter?: Record<string, unknown>;
     select?: string[];
     sortBy?: Record<string, "asc" | "desc">;
-    limit?: number;
-    offset?: number;
     useSoftDelete?: boolean;
-}): Promise<unknown[]> => {
+    limit?: number;
+    page?: number;
+}): Promise<{
+    data: unknown[];
+    meta: {
+        page: number;
+        limit: number;
+        totalCount: number;
+        totalPages: number;
+    };
+}> => {
     const values: unknown[] = [];
     const conditions: string[] = [];
-
-    const selectClause = select ? `SELECT ${select.join(", ")}` : "SELECT *";
+    const offset = (page - 1) * limit;
 
     Object.entries(filter ?? {}).forEach(
         ([key, value], index) => {
@@ -36,6 +43,8 @@ export const fetchManyFromTable = async ({
         conditions.push("deleted_at IS NULL");
     }
 
+    const selectClause = select ? `SELECT ${select.join(", ")}` : "SELECT *";
+
     const sortByClause = sortBy ? `ORDER BY ${Object.entries(sortBy).map(([key, value]) => `${key} ${value}`).join(", ")}` : "";
 
     const whereClause = conditions.length
@@ -50,11 +59,93 @@ export const fetchManyFromTable = async ({
       LIMIT ${limit}
       OFFSET ${offset}
     `;
+    try {
+        const result =
+            await pg.query(query, values);
 
-    const result =
-        await pg.query(query, values);
+        const rows = result.rows;
 
-    return result.rows;
+        const totalCountResult = await pg.query(`SELECT COUNT(*) FROM ${table} ${whereClause}`);
+        const totalCount = Number(totalCountResult.rows[0].count);
+
+        const lastPage = Math.ceil(totalCount / limit);
+
+        return {
+            data: rows,
+            meta: {
+                page,
+                limit,
+                totalCount: totalCount,
+                totalPages: lastPage,
+            }
+        }
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw error;
+    }
+}
+
+export const fetchManyFromTable = async ({
+    table,
+    filter,
+    select,
+    sortBy,
+    useSoftDelete = true,
+    limit,
+    offset,
+}: {
+    table: string;
+    filter?: Record<string, unknown>;
+    select?: string[];
+    sortBy?: Record<string, "asc" | "desc">;
+    useSoftDelete?: boolean;
+    limit?: number;
+    offset?: number;
+}): Promise<unknown[]> => {
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+
+    Object.entries(filter ?? {}).forEach(
+        ([key, value], index) => {
+            values.push(value);
+
+            conditions.push(
+                `${key} = $${index + 1}`
+            );
+        }
+    );
+
+    if (useSoftDelete) {
+        conditions.push("deleted_at IS NULL");
+    }
+
+    const selectClause = select ? `SELECT ${select.join(", ")}` : "SELECT *";
+
+    const sortByClause = sortBy ? `ORDER BY ${Object.entries(sortBy).map(([key, value]) => `${key} ${value}`).join(", ")}` : "";
+
+    const whereClause = conditions.length
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+    const query = `
+      ${selectClause}
+      FROM ${table}
+      ${whereClause}
+      ${sortByClause}
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+    try {
+        const result =
+            await pg.query(query, values);
+
+        return result.rows;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw error;
+    }
 }
 
 export const fetchOneFromTable = async ({

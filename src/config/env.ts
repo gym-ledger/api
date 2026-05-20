@@ -24,7 +24,7 @@ const envSchema = z.object({
     ]).default("info"),
 
     ACCESS_TOKEN_SECRET: z.string().min(10),
-    REFRESH_TOKEN_SECRET: z.string().min(10),
+    ADMIN_ACCESS_TOKEN_SECRET: z.string().min(10),
 });
 
 const parsed = envSchema.safeParse(process.env);

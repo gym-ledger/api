@@ -58,6 +58,8 @@ CREATE TABLE workout_program_versions (
     workout_program_id UUID NOT NULL
         REFERENCES workout_programs(id),
 
+    description TEXT NOT NULL,
+
     version_number INTEGER NOT NULL,
     UNIQUE (workout_program_id, version_number),
 

@@ -4,7 +4,7 @@ import { AppError } from "../../shared/errors/AppError.js";
 import { fetchOneFromTable, addOneInTable, updateOneInTable, deleteOneFromTable } from "../index/index.repository.js";
 import { sendSMS } from "../../utils/sms-utils.js";
 import { sendEmail } from "../../utils/email-utils.js";
-import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schemas.js";
+import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schema.js";
 import { generateRefreshToken, generateUserAccessToken } from "../../utils/authentication.js";
 import { hashToken } from "../../utils/crypto.js";
 import { USER_SESSIONS_TABLE } from "../../db/schemas/auth/user_sessions.schema.js";
