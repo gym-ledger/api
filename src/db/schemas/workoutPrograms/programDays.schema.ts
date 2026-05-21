@@ -1,3 +1,5 @@
+import { ProgramDaySessionsInterface } from "./programDaySessions.schema.js";
+
 export const PROGRAM_DAYS_TABLE = "program_days";
 
 export interface ProgramDaysInterface {
@@ -11,6 +13,8 @@ export interface ProgramDaysInterface {
     deleted_at: Date;
     created_at: Date;
     updated_at: Date;
+
+    sessions: ProgramDaySessionsInterface[];
 }
 
 export const PROGRAM_DAYS_SCHEMA = {

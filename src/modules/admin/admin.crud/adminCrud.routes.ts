@@ -7,7 +7,7 @@ import {
     createWorkoutProgramForAdmin,
     updateWorkoutProgramForAdmin,
     deleteWorkoutProgramForAdmin,
-} from './adminCrud.controller.js';
+} from './admin.crud.workoutPrograms/adminCrudWorkoutPrograms.controller.js';
 import {
     listExercisesForAdmin,
     viewExerciseForAdmin,
@@ -45,6 +45,7 @@ adminCrudRouter.get("/progression-rules/view/:id", asyncHandler(viewProgressionR
 adminCrudRouter.post("/progression-rules/create", asyncHandler(createProgressionRuleForAdmin));
 adminCrudRouter.put("/progression-rules/update/:id", asyncHandler(updateProgressionRuleForAdmin));
 adminCrudRouter.delete("/progression-rules/delete/:id", asyncHandler(deleteProgressionRuleForAdmin));
+
 
 // workout programs
 adminCrudRouter.get("/workout-programs/list", asyncHandler(listWorkoutProgramsForAdmin));

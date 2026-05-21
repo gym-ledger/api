@@ -1,3 +1,5 @@
+import { WorkoutProgramExercisesInterface } from "./workoutProgramExercises.schema.js";
+
 export const PROGRAM_DAY_SESSIONS_TABLE = "program_day_sessions";
 
 export interface ProgramDaySessionsInterface {
@@ -10,6 +12,8 @@ export interface ProgramDaySessionsInterface {
     deleted_at: Date | null;
     created_at: Date;
     updated_at: Date;
+
+    exercises: WorkoutProgramExercisesInterface[];
 }
 
 export const PROGRAM_DAY_SESSIONS_SCHEMA = {
