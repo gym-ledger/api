@@ -1,24 +1,20 @@
 // utils/parseCsv.ts
 
-import fs from "fs";
+import { Readable } from "stream";
 import { parse } from "csv-parse";
 
 type ParseCsvOptions<T> = {
-    filePath: string;
+    buffer: Buffer;
 
-    /**
-     * Optional row transformer
-     */
     mapRow?: (row: Record<string, string>) => T;
 
-    /**
-     * Skip invalid rows instead of throwing
-     */
     skipInvalidRows?: boolean;
 };
 
-export const parseCsv = async <T = Record<string, string>>({
-    filePath,
+export const parseCsv = async <
+    T = Record<string, string>
+>({
+    buffer,
     mapRow,
     skipInvalidRows = false,
 }: ParseCsvOptions<T>): Promise<T[]> => {
@@ -26,12 +22,14 @@ export const parseCsv = async <T = Record<string, string>>({
         const results: T[] = [];
 
         const parser = parse({
-            columns: true, // Uses first row as keys
+            columns: true,
             trim: true,
             skip_empty_lines: true,
         });
 
-        fs.createReadStream(filePath)
+        const stream = Readable.from(buffer);
+
+        stream
             .pipe(parser)
             .on("data", (row: Record<string, string>) => {
                 try {
@@ -46,9 +44,7 @@ export const parseCsv = async <T = Record<string, string>>({
                     }
                 }
             })
-            .on("end", () => {
-                resolve(results);
-            })
+            .on("end", () => resolve(results))
             .on("error", reject);
     });
 };
