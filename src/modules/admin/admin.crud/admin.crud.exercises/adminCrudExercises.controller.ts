@@ -6,7 +6,10 @@ import {
     createExerciseForAdminService,
     updateExerciseForAdminService,
     deleteExerciseForAdminService,
+    importExercisesForAdminService,
+    exportExercisesForAdminService
 } from "./adminCrudExercises.service.js";
+import { AppError } from "../../../../shared/errors/AppError.js";
 
 // exercises
 export const listExercisesForAdmin = async (req: Request, res: Response, next: NextFunction) => {
@@ -55,6 +58,29 @@ export const deleteExerciseForAdmin = async (req: Request, res: Response, next: 
         const data = await deleteExerciseForAdminService({ id: req.params.id as string });
 
         return responseSend(res, 200, "Exercise deleted successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const importExercisesForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!req.file) {
+            throw new AppError("File is required", 400);
+        }
+        const data = await importExercisesForAdminService({ file: req.file as Express.Multer.File });
+
+        return responseSend(res, 200, "Exercises imported successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const exportExercisesForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await exportExercisesForAdminService();
+
+        return responseSend(res, 200, "Exercises exported successfully", data);
     } catch (error) {
         next(error);
     }

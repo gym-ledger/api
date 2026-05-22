@@ -9,6 +9,7 @@ import { isValidUUID } from "../../../../utils/validation.js";
 import { EXERCISES_TABLE, ExercisesInterface } from "../../../../db/schemas/exercises/exercises.schema.js";
 import slugify from "slugify";
 import { ProgramDaysInterface } from "../../../../db/schemas/workoutPrograms/programDays.schema.js";
+import { parseCsv } from "../../../../utils/csv.js";
 
 // exercises
 export const listExercisesForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
@@ -153,4 +154,36 @@ export const deleteExerciseForAdminService = async (data: { id: string }) => {
         filter: { id },
     });
     return exercise;
+}
+
+export const importExercisesForAdminService = async (data: { file: Express.Multer.File }) => {
+    const { file } = data;
+
+    if (!file) {
+        throw new AppError("File is required", 400);
+    }
+    const errors: {
+        row: number;
+        message: string;
+    }[] = [];
+    const success = [];
+    const exercises = await parseCsv({
+        filePath: file.path, mapRow: (row) => {
+            return {
+                id: row.id || null,
+                name: row.name,
+                description: row.description,
+                visibility: row.visibility,
+            };
+        }
+    });
+    return { errors, success: exercises };
+}
+
+export const exportExercisesForAdminService = async () => {
+    const exercises = await fetchManyFromTable({
+        table: EXERCISES_TABLE,
+        filter: {},
+    }) as ExercisesInterface[];
+    return exercises;
 }

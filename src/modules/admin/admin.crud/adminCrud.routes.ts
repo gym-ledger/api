@@ -14,6 +14,8 @@ import {
     createExerciseForAdmin,
     updateExerciseForAdmin,
     deleteExerciseForAdmin,
+    importExercisesForAdmin,
+    exportExercisesForAdmin
 } from './admin.crud.exercises/adminCrudExercises.controller.js';
 import {
     listProgressionRulesForAdmin,
@@ -38,6 +40,8 @@ adminCrudRouter.get("/exercises/view/:id", asyncHandler(viewExerciseForAdmin));
 adminCrudRouter.post("/exercises/create", upload.single("image"), asyncHandler(createExerciseForAdmin));
 adminCrudRouter.put("/exercises/update/:id", upload.single("image"), asyncHandler(updateExerciseForAdmin));
 adminCrudRouter.delete("/exercises/delete/:id", asyncHandler(deleteExerciseForAdmin));
+adminCrudRouter.post("/exercises/import", upload.single("file"), asyncHandler(importExercisesForAdmin));
+adminCrudRouter.get("/exercises/export", asyncHandler(exportExercisesForAdmin));
 
 // progression rules
 adminCrudRouter.get("/progression-rules/list", asyncHandler(listProgressionRulesForAdmin));
