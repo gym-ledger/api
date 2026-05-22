@@ -10,7 +10,8 @@ export const generateUserAccessToken = async ({
     userId: string;
     sessionId: string;
 }) => {
-    return await new SignJWT({
+    const accessTokenExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
+    const accessToken = await new SignJWT({
         sessionId,
     })
         .setProtectedHeader({
@@ -24,6 +25,8 @@ export const generateUserAccessToken = async ({
                 env.ACCESS_TOKEN_SECRET
             )
         );
+
+    return { accessToken, accessTokenExpiresAt };
 }
 export const generateAdminAccessToken = async ({
     userId,
