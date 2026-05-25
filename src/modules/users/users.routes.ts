@@ -1,10 +1,9 @@
 import { Router } from "express";
-import { asyncHandler } from "../../shared/errors/utils/asyncHandler.js";
-import { AppError } from "../../shared/errors/AppError.js";
-import { verifyUserToken } from '../../middleware/authenticationMiddleware.js';
-import { getUserSelfProfile } from './users.controller.js';
+import usersWeightRouter from './users.weight/users.weight.routes.js';
+import usersProfileRouter from './users.profile/users.profile.routes.js';
 
-const authRouter = Router();
+const usersRouter = Router();
 
-authRouter.get("/profile", verifyUserToken, asyncHandler(getUserSelfProfile));
-export default authRouter;
+usersRouter.use("/profile", usersProfileRouter);
+usersRouter.use("/weight", usersWeightRouter);
+export default usersRouter;

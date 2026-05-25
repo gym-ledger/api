@@ -60,6 +60,17 @@ export type FetchPaginatedResultsFromTableParams = {
     page?: number;
 };
 
+export type FetchManyFromTableParams = {
+    table: string;
+    where?: QueryCondition[];
+    select?: string[];
+    extraSelects?: string[];
+    sortBy?: Record<string, "asc" | "desc">;
+    useSoftDelete?: boolean;
+    limit?: number;
+    offset?: number;
+};
+
 export const fetchPaginatedResultsFromTable = async ({
     table,
     where = [],
@@ -396,103 +407,287 @@ export const fetchPaginatedResultsFromTable = async ({
 
 export const fetchManyFromTable = async ({
     table,
-    filter,
+    where = [],
     select,
+    extraSelects = [],
     sortBy,
     useSoftDelete = true,
-    limit,
+    limit = 10,
     offset = 0,
-}: {
-    table: string;
-    filter?: Record<string, unknown>;
-    select?: string[];
-    sortBy?: Record<string, "asc" | "desc">;
-    useSoftDelete?: boolean;
-    limit?: number;
-    offset?: number;
-}): Promise<unknown[]> => {
+}: FetchManyFromTableParams): Promise<unknown[]> => {
+
+    offset = parseInt(offset.toString());
+
+    limit = parseInt(limit.toString());
+
+    /**
+     * IMPORTANT:
+     * Whitelist tables in production.
+     */
+
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
     const values: unknown[] = [];
 
     const conditions: string[] = [];
 
-    Object.entries(filter ?? {}).forEach(
-        ([key, rawValue]) => {
-            let operator = "=";
+    const computedExtraSelects: string[] = [
+        ...extraSelects,
+    ];
 
-            let value = rawValue;
+    /**
+     * WHERE conditions
+     */
+    where.forEach((condition) => {
+        switch (condition.operator) {
+            case "=": {
+                values.push(condition.value);
 
-            if (
-                typeof rawValue === "object"
-                && rawValue !== null
-                && "operator" in rawValue
-                && "value" in rawValue
-            ) {
-                operator = rawValue.operator as "=" | "!=";
+                conditions.push(
+                    `${condition.field} = $${values.length}`
+                );
 
-                value = rawValue.value;
+                break;
             }
 
-            values.push(value);
+            case "!=": {
+                values.push(condition.value);
 
-            conditions.push(
-                `${key} ${operator} $${values.length
-                }`
-            );
+                conditions.push(
+                    `${condition.field} != $${values.length}`
+                );
+
+                break;
+            }
+
+            case ">": {
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} > $${values.length}`
+                );
+
+                break;
+            }
+
+            case "<": {
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} < $${values.length}`
+                );
+
+                break;
+            }
+
+            case ">=": {
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} >= $${values.length}`
+                );
+
+                break;
+            }
+
+            case "<=": {
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} <= $${values.length}`
+                );
+
+                break;
+            }
+
+            case "ILIKE": {
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} ILIKE $${values.length}`
+                );
+
+                break;
+            }
+
+            case "IN": {
+                if (
+                    !Array.isArray(condition.value)
+                    || condition.value.length === 0
+                ) {
+                    break;
+                }
+
+                const placeholders = condition.value.map((value) => {
+                    values.push(value);
+
+                    return `$${values.length}`;
+                });
+
+                conditions.push(
+                    `${condition.field} IN (${placeholders.join(", ")})`
+                );
+
+                break;
+            }
+
+            case "IS NULL": {
+                conditions.push(
+                    `${condition.field} IS NULL`
+                );
+
+                break;
+            }
+
+            case "FTS": {
+                if (
+                    !condition.value
+                    || typeof condition.value !== "string"
+                    || condition.value.trim() === ""
+                ) {
+                    break;
+                }
+
+                values.push(condition.value);
+
+                const placeholder =
+                    `$${values.length}`;
+
+                conditions.push(`
+                    search_vector
+                    @@
+                    websearch_to_tsquery(
+                        'english',
+                        ${placeholder}
+                    )
+                `);
+
+                computedExtraSelects.push(`
+                    ts_rank(
+                        search_vector,
+                        websearch_to_tsquery(
+                            'english',
+                            ${placeholder}
+                        )
+                    ) AS rank
+                `);
+
+                /**
+                 * Automatically sort by rank
+                 * unless explicitly overridden
+                 */
+                if (!sortBy) {
+                    sortBy = {
+                        rank: "desc",
+                    };
+                }
+
+                break;
+            }
+
+            case "RAW": {
+                if (!condition.raw) {
+                    break;
+                }
+
+                conditions.push(condition.raw);
+
+                break;
+            }
+
+            default: {
+                throw new Error(
+                    `Unsupported operator: ${condition.operator}`
+                );
+            }
         }
-    );
+    });
 
+    /**
+     * Soft delete support
+     */
     if (useSoftDelete) {
         conditions.push(
-            "deleted_at IS NULL"
+            `deleted_at IS NULL`
         );
     }
 
-    const selectClause = select
-        ? `SELECT ${select.join(", ")}`
-        : "SELECT *";
+    /**
+     * SELECT clause
+     */
+    const selectFields = [
+        ...(select ?? ["*"]),
+        ...computedExtraSelects,
+    ];
 
-    const sortByClause = sortBy
-        ? `ORDER BY ${Object.entries(
-            sortBy
-        )
-            .map(
-                ([key, value]) =>
-                    `${key} ${value}`
-            )
-            .join(", ")}`
-        : "";
+    const selectClause =
+        `SELECT ${selectFields.join(", ")}`;
 
+    /**
+     * WHERE clause
+     */
     const whereClause =
-        conditions.length
-            ? `WHERE ${conditions.join(
-                " AND "
-            )}`
+        conditions.length > 0
+            ? `WHERE ${conditions.join(" AND ")}`
             : "";
 
+    /**
+     * ORDER BY clause
+     *
+     * IMPORTANT:
+     * Whitelist sortable fields in production.
+     */
+    let sortByClause = "";
+
+    if (sortBy) {
+        const sortEntries =
+            Object.entries(sortBy);
+
+        if (sortEntries.length > 0) {
+            sortByClause = `
+                ORDER BY
+                ${sortEntries
+                    .map(
+                        ([field, direction]) =>
+                            `${field} ${direction.toUpperCase()}`
+                    )
+                    .join(", ")}
+            `;
+        }
+    }
+
+
+    /**
+     * Main query
+     */
     const query = `
         ${selectClause}
         FROM ${table}
         ${whereClause}
         ${sortByClause}
-        ${limit ? `LIMIT ${limit}` : ""}
-        ${offset ? `OFFSET ${offset}` : ""}
+        ${limit ? `LIMIT ${limit}` : ''}
+        ${offset ? `OFFSET ${offset}` : ''}
     `;
 
-    try {
-        const result = await pg.query(
-            query,
-            values
-        );
 
-        return result.rows;
+    try {
+        const rowsResult =
+            await pg.query(query, values);
+
+
+        return rowsResult.rows;
     } catch (error) {
         console.log(query);
+
+        console.log(values);
 
         console.log(error);
 
         throw error;
     }
-}
+};
 
 export const fetchOneFromTable = async ({
     table,
@@ -615,10 +810,12 @@ export const updateOneInTable = async ({
     table,
     data,
     filter,
+    useSoftDelete = true,
 }: {
     table: string;
     data: Record<string, unknown>;
     filter?: Record<string, unknown>;
+    useSoftDelete?: boolean;
 }): Promise<unknown> => {
 
     const values: unknown[] = [];
