@@ -68,7 +68,7 @@ export const importExercisesForAdmin = async (req: Request, res: Response, next:
         if (!req.file) {
             throw new AppError("File is required", 400);
         }
-        const data = await importExercisesForAdminService({ file: req.file as Express.Multer.File });
+        const data = await importExercisesForAdminService({ file: req.file as Express.Multer.File }, req.adminUserId as string);
 
         return responseSend(res, 200, "Exercises imported successfully", data);
     } catch (error) {
