@@ -225,6 +225,7 @@ export const refreshTokensService = async (refreshToken: string) => {
         filter: {
             refresh_token_hash: hashToken(refreshToken),
         },
+        useSoftDelete: false,
     }) as UserSessionsInterface;
     if (!sessionObj) {
         throw new AppError("Invalid refresh token", 401);
