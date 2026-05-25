@@ -1,4 +1,4 @@
-CREATE TABLE admin_users (
+CREATE TABLE IF NOT EXISTS admin_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     email CITEXT NOT NULL,
@@ -18,9 +18,12 @@ CREATE TABLE admin_users (
 
 );
 
-CREATE UNIQUE INDEX uq_admin_users_email
+CREATE UNIQUE INDEX IF NOT EXISTS uq_admin_users_email
 ON admin_users(email)
 WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trigger_admin_users_updated_at
+ON admin_users;
 
 CREATE TRIGGER trigger_admin_users_updated_at
 BEFORE UPDATE ON admin_users

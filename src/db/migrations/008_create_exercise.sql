@@ -1,4 +1,4 @@
-CREATE TABLE exercises (
+CREATE TABLE IF NOT EXISTS exercises (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     name VARCHAR(255) NOT NULL,
@@ -39,9 +39,12 @@ CREATE TABLE exercises (
     )
 );
 
-CREATE UNIQUE INDEX uq_exercises_slug
+CREATE UNIQUE INDEX IF NOT EXISTS uq_exercises_slug
 ON exercises(slug)
 WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trigger_exercises_updated_at
+ON exercises;
 
 CREATE TRIGGER trigger_exercises_updated_at
 BEFORE UPDATE ON exercises

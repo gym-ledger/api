@@ -1,4 +1,4 @@
-CREATE TABLE progression_rules (
+CREATE TABLE IF NOT EXISTS progression_rules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     name VARCHAR(255) NOT NULL,
@@ -29,6 +29,9 @@ CREATE TABLE progression_rules (
 
 );
 
+
+DROP TRIGGER IF EXISTS trigger_progression_rules_updated_at
+ON progression_rules;
 
 CREATE TRIGGER trigger_progression_rules_updated_at
 BEFORE UPDATE ON progression_rules

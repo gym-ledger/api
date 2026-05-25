@@ -1,4 +1,4 @@
-CREATE TABLE workout_sessions (
+CREATE TABLE IF NOT EXISTS workout_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     user_id UUID NOT NULL
@@ -22,13 +22,16 @@ CREATE TABLE workout_sessions (
         DEFAULT NOW()
 );
 
-CREATE INDEX idx_workout_sessions_user_id
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_user_id
 ON workout_sessions(user_id)
 WHERE deleted_at IS NULL;
 
-CREATE INDEX idx_workout_sessions_program_assignment_id
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_program_assignment_id
 ON workout_sessions(program_assignment_id)
 WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trigger_workout_sessions_updated_at
+ON workout_sessions;
 
 CREATE TRIGGER trigger_workout_sessions_updated_at
 BEFORE UPDATE ON workout_sessions

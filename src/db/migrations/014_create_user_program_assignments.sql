@@ -1,4 +1,4 @@
-CREATE TABLE user_program_assignments (
+CREATE TABLE IF NOT EXISTS user_program_assignments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     user_id UUID NOT NULL   
@@ -27,9 +27,12 @@ CREATE TABLE user_program_assignments (
         DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX uq_user_program_assignments_user_id_workout_program_version_id
+CREATE UNIQUE INDEX IF NOT EXISTS uq_user_program_assignments_user_id_workout_program_version_id
 ON user_program_assignments(user_id, workout_program_version_id)
 WHERE deleted_at IS NULL;
+
+DROP TRIGGER IF EXISTS trigger_user_program_assignments_updated_at
+ON user_program_assignments;
 
 CREATE TRIGGER trigger_user_program_assignments_updated_at
 BEFORE UPDATE ON user_program_assignments

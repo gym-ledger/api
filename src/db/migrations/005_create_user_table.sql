@@ -37,7 +37,7 @@ ON users(
 )
 WHERE deleted_at IS NULL;
 
-CREATE TRIGGER trigger_users_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW
-EXECUTE FUNCTION set_updated_at();
+-- CREATE TRIGGER trigger_users_updated_at
+-- BEFORE UPDATE ON users
+-- FOR EACH ROW
+-- EXECUTE FUNCTION set_updated_at();
