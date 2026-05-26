@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS user_weight_moving_averages (
     seven_day_moving_average DECIMAL (5, 2),
 
     date DATE NOT NULL,
+
+    day VARCHAR(255) NOT NULL,
     
     deleted_at TIMESTAMPTZ,
     

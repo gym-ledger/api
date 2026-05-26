@@ -4,7 +4,8 @@ import { AppError } from "../../../shared/errors/AppError.js";
 import {
     getUserWeightInViewService,
     createUserWeightEntryService,
-    updateUserWeightEntryService
+    updateUserWeightEntryService,
+    importUserWeightEntriesService
 } from "./users.weight.service.js";
 
 export const getUserWeightViews = async (req: Request, res: Response, next: NextFunction) => {
@@ -86,6 +87,21 @@ export const getUserWeightEntries = async (req: Request, res: Response, next: Ne
     try {
         // const user = req.user;
         responseSend(res, 200, "User profile fetched successfully", req.user);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const importUserWeightEntries = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const userId = req.userId;
+
+        const data = await importUserWeightEntriesService({
+            userId,
+            file: req.file as Express.Multer.File,
+        });
+        responseSend(res, 200, "User weight entries imported successfully", data);
+
     } catch (error) {
         next(error);
     }

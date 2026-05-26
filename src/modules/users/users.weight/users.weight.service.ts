@@ -4,6 +4,10 @@ import { USER_HEALTH_PREFERENCES_TABLE, UserHealthPreferencesInterface } from ".
 import { AppError } from "../../../shared/errors/AppError.js";
 import { USER_WEIGHT_ENTRIES_TABLE, UserWeightEntriesInterface } from "../../../db/schemas/users/weight/userWeightEntries.schema.js";
 import { USER_WEIGHT_MOVING_AVERAGES_TABLE, UserWeightMovingAveragesInterface } from "../../../db/schemas/users/weight/userWeightMovingAverages.schema.js";
+import { reCalculateUserWeightMovingAverages } from "../../../utils/users/users.weight.utils.js";
+import { importUserWeightEntries } from "./users.weight.controller.js";
+import { parseCsv } from "../../../utils/csv.js";
+import { prettyFloat } from "../../../utils/math.js";
 
 export const getUserWeightInViewService = async ({
     userId,
@@ -50,7 +54,7 @@ export const getUserWeightInViewService = async ({
                     value: to,
                 },
             ],
-            select: ["id", "weight", "date"],
+            select: ["id", "weight", "day"],
             sortBy: {
                 date: "asc",
             },
@@ -74,44 +78,44 @@ export const getUserWeightInViewService = async ({
                     value: to,
                 },
             ],
-            select: ["id", "three_day_moving_average", "seven_day_moving_average", "date"],
+            select: ["id", "three_day_moving_average", "seven_day_moving_average", "day"],
             sortBy: {
                 date: "asc",
             },
         }) as Partial<UserWeightMovingAveragesInterface>[];
 
-        weightEntries = weightEntries.map((entry: Partial<UserWeightEntriesInterface>) => {
-            if (!entry.date) {
-                return {};
-            }
-            return {
-                id: entry.id,
-                user_id: entry.user_id,
-                weight: entry.weight,
-                local_date: DateTime
-                    .fromJSDate(entry.date, {
-                        zone: "utc",
-                    })
-                    .setZone(timezone)
-                    .toISODate(),
-            }
-        });
-        weightMovingAverages = weightMovingAverages.map((average: Partial<UserWeightMovingAveragesInterface>) => {
-            if (!average.date) {
-                return {};
-            }
-            return {
-                id: average.id,
-                three_day_moving_average: average.three_day_moving_average,
-                seven_day_moving_average: average.seven_day_moving_average,
-                local_date: DateTime
-                    .fromJSDate(average.date, {
-                        zone: "utc",
-                    })
-                    .setZone(timezone)
-                    .toISODate(),
-            }
-        });
+        // weightEntries = weightEntries.map((entry: Partial<UserWeightEntriesInterface>) => {
+        //     if (!entry.date) {
+        //         return {};
+        //     }
+        //     return {
+        //         id: entry.id,
+        //         user_id: entry.user_id,
+        //         weight: entry.weight,
+        //         local_date: DateTime
+        //             .fromJSDate(entry.date, {
+        //                 zone: "utc",
+        //             })
+        //             .setZone(timezone)
+        //             .toISODate(),
+        //     }
+        // });
+        // weightMovingAverages = weightMovingAverages.map((average: Partial<UserWeightMovingAveragesInterface>) => {
+        //     if (!average.date) {
+        //         return {};
+        //     }
+        //     return {
+        //         id: average.id,
+        //         three_day_moving_average: average.three_day_moving_average,
+        //         seven_day_moving_average: average.seven_day_moving_average,
+        //         local_date: DateTime
+        //             .fromJSDate(average.date, {
+        //                 zone: "utc",
+        //             })
+        //             .setZone(timezone)
+        //             .toISODate(),
+        //     }
+        // });
         return {
             weight_entries: weightEntries,
             weight_moving_averages: weightMovingAverages,
@@ -145,16 +149,44 @@ export const createUserWeightEntryService = async ({
     }
 
     const dateVal = DateTime.fromISO(date, { zone: timezone }).toJSDate();
-    const userWeightEntry = await addOneInTable({
+    const day = DateTime.fromISO(date, { zone: timezone }).toISODate();
+
+    let entry = await fetchOneFromTable({
         table: USER_WEIGHT_ENTRIES_TABLE,
-        data: {
+        filter: {
             user_id: userId,
-            weight,
-            date: dateVal,
+            day,
         },
-    }) as UserWeightEntriesInterface;
+    }) as UserWeightEntriesInterface | null;
+    if (entry) {
+        entry = await updateOneInTable({
+            table: USER_WEIGHT_ENTRIES_TABLE,
+            filter: {
+                id: entry.id,
+            },
+            data: {
+                weight,
+            },
+        }) as UserWeightEntriesInterface;
+
+    } else {
+        entry = await addOneInTable({
+            table: USER_WEIGHT_ENTRIES_TABLE,
+            data: {
+                user_id: userId,
+                weight,
+                date: dateVal,
+                day,
+            },
+        }) as UserWeightEntriesInterface;
+
+    }
+    await reCalculateUserWeightMovingAverages({
+        userId,
+        date: date,
+    });
     return {
-        user_weight_entry: userWeightEntry,
+        user_weight_entry: entry,
     }
 }
 export const updateUserWeightEntryService = async ({
@@ -172,7 +204,7 @@ export const updateUserWeightEntryService = async ({
     if (!weight) {
         throw new AppError("Weight is required", 400);
     }
-    const entry = await fetchOneFromTable({
+    let entry = await fetchOneFromTable({
         table: USER_WEIGHT_ENTRIES_TABLE,
         filter: {
             id: entryId,
@@ -182,7 +214,7 @@ export const updateUserWeightEntryService = async ({
     if (!entry) {
         throw new AppError("Entry not found", 404);
     }
-    const userWeightEntry = await updateOneInTable({
+    entry = await updateOneInTable({
         table: USER_WEIGHT_ENTRIES_TABLE,
         filter: {
             id: entryId,
@@ -191,7 +223,72 @@ export const updateUserWeightEntryService = async ({
             weight: weight,
         },
     }) as UserWeightEntriesInterface;
+
+    await reCalculateUserWeightMovingAverages({
+        userId,
+        date: entry.day as string,
+    });
     return {
-        user_weight_entry: userWeightEntry,
+        user_weight_entry: entry,
+    }
+}
+
+export const importUserWeightEntriesService = async ({
+    userId,
+    file
+}: {
+    userId: string | undefined,
+    file: Express.Multer.File,
+}) => {
+    if (!file) {
+        throw new AppError("File is required", 400);
+    }
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    const weightEntries = await parseCsv({
+        buffer: file.buffer, mapRow: (row) => {
+            return {
+                date: row.date,
+                weight: row.weight,
+            };
+        }
+    }) as {
+        date: string;
+        weight: string;
+    }[];
+    // Promise.all led to race-conditions on createEntryService's reCalculateUserWeightMovingAverages fn
+    // await Promise.all(weightEntries.map(async (weightEntry) => {
+    for (const weightEntry of weightEntries) {
+        try {
+            if (!weightEntry.date) {
+                throw new AppError("Date is required", 400);
+            }
+            if (!weightEntry.weight) {
+                throw new AppError("Weight is required", 400);
+            }
+            const weight = prettyFloat(weightEntry.weight);
+            if (!weight) {
+                throw new AppError("Invalid weight", 400);
+            }
+            console.log(weightEntry.date);
+            const dateObj = DateTime.fromISO(weightEntry.date, { zone: "Asia/Kolkata" });
+            if (!dateObj.isValid) {
+                throw new AppError("Invalid date", 400);
+            }
+            console.log(dateObj.toISO());
+            await createUserWeightEntryService({
+                userId,
+                weight,
+                date: dateObj.toISO(),
+            });
+        } catch (error) {
+            console.log(error);
+            throw new AppError("Error importing weight entries", 500);
+        }
+    }
+    // }));
+    return {
+        weight_entries: weightEntries,
     }
 }

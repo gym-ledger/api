@@ -412,13 +412,15 @@ export const fetchManyFromTable = async ({
     extraSelects = [],
     sortBy,
     useSoftDelete = true,
-    limit = 10,
+    limit,
     offset = 0,
 }: FetchManyFromTableParams): Promise<unknown[]> => {
 
     offset = parseInt(offset.toString());
 
-    limit = parseInt(limit.toString());
+    if (limit) {
+        limit = parseInt(limit.toString());
+    }
 
     /**
      * IMPORTANT:

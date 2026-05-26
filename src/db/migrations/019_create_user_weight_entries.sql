@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS user_weight_entries (
     weight DECIMAL (5, 2) NOT NULL,
 
     date DATE NOT NULL,
+
+    day VARCHAR(255) NOT NULL,
     
     deleted_at TIMESTAMPTZ,
     

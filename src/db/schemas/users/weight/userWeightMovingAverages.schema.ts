@@ -11,6 +11,8 @@ export interface UserWeightMovingAveragesInterface {
 
     date: Date;
 
+    day: string;
+
     deleted_at: Date;
 
     created_at: Date;

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import { verifyUserToken } from '../../../middleware/authenticationMiddleware.js';
 import {
     getUserWeightViews,
@@ -7,10 +8,17 @@ import {
     createUserWeightEntry,
     updateUserWeightEntry,
     deleteUserWeightEntry,
-    getUserWeightEntries
+    getUserWeightEntries,
+    importUserWeightEntries
 } from './users.weight.controller.js';
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
 
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 1024 * 1024 * 10, // 10MB
+    },
+});
 const usersWeightRouter = Router();
 
 usersWeightRouter.get("/views-list", verifyUserToken, asyncHandler(getUserWeightViews));
@@ -22,4 +30,6 @@ usersWeightRouter.post("/entry", verifyUserToken, asyncHandler(createUserWeightE
 usersWeightRouter.put("/entry/:id", verifyUserToken, asyncHandler(updateUserWeightEntry));
 usersWeightRouter.delete("/entry/:id", verifyUserToken, asyncHandler(deleteUserWeightEntry));
 usersWeightRouter.get("/entries", verifyUserToken, asyncHandler(getUserWeightEntries));
+usersWeightRouter.post("/entries/import", verifyUserToken, upload.single("file"), asyncHandler(importUserWeightEntries));
+
 export default usersWeightRouter;
