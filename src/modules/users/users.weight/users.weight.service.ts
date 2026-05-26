@@ -84,6 +84,21 @@ export const getUserWeightInViewService = async ({
             },
         }) as Partial<UserWeightMovingAveragesInterface>[];
 
+        weightEntries = weightEntries.map((entry: Partial<UserWeightEntriesInterface>) => {
+            return {
+                ...entry,
+                weight: prettyFloat(entry.weight || 0),
+            }
+        });
+
+        weightMovingAverages = weightMovingAverages.map((average: Partial<UserWeightMovingAveragesInterface>) => {
+            return {
+                ...average,
+                three_day_moving_average: prettyFloat(average.three_day_moving_average || 0),
+                seven_day_moving_average: prettyFloat(average.seven_day_moving_average || 0),
+            }
+        });
+
         // weightEntries = weightEntries.map((entry: Partial<UserWeightEntriesInterface>) => {
         //     if (!entry.date) {
         //         return {};
