@@ -600,12 +600,14 @@ const handleWhereConditions = (where: QueryCondition[], values: unknown[], condi
 export const fetchOneFromTable = async ({
     table,
     where = [],
+    filter,
     select,
     sortBy,
     useSoftDelete = true,
 }: {
     table: string;
     where?: QueryCondition[];
+    filter?: Record<string, unknown>;
     select?: string[];
     sortBy?: Record<string, "asc" | "desc">;
     useSoftDelete?: boolean;
@@ -615,12 +617,18 @@ export const fetchOneFromTable = async ({
         throw new Error(`Invalid table: ${table}`);
     }
 
+    const filterConditions: QueryCondition[] = Object.entries(filter ?? {}).map(([field, value]) => ({
+        field,
+        operator: "=" as const,
+        value,
+    }));
+
     let {
         values,
         whereClause,
         extraSelects: computedExtraSelects,
         sortBy: computedSortBy,
-    } = buildWhereClause(where, sortBy);
+    } = buildWhereClause([...filterConditions, ...where], sortBy);
 
     if (useSoftDelete) {
         whereClause = whereClause
@@ -730,11 +738,13 @@ export const updateOneInTable = async ({
     table,
     data,
     where = [],
+    filter,
     useSoftDelete = true,
 }: {
     table: string;
     data: Record<string, unknown>;
-    where: QueryCondition[];
+    where?: QueryCondition[];
+    filter?: Record<string, unknown>;
     useSoftDelete?: boolean;
 }): Promise<unknown> => {
 
@@ -742,10 +752,16 @@ export const updateOneInTable = async ({
         throw new Error(`Invalid table: ${table}`);
     }
 
+    const filterConditions: QueryCondition[] = Object.entries(filter ?? {}).map(([field, value]) => ({
+        field,
+        operator: "=" as const,
+        value,
+    }));
+
     let {
         values,
         whereClause,
-    } = buildWhereClause(where);
+    } = buildWhereClause([...filterConditions, ...where]);
 
     if (useSoftDelete) {
         whereClause = whereClause
