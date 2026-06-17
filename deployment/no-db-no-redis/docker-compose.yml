@@ -1,0 +1,15 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workout-gym-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    # Allows the container to reach services (postgres, redis) running on the host
+    # via host.docker.internal — use that hostname in DATABASE_URL / REDIS_URL in .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
