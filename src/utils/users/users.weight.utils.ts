@@ -1,10 +1,11 @@
 import { DateTime } from "luxon";
 import { USER_WEIGHT_ENTRIES_TABLE, UserWeightEntriesInterface } from "../../db/schemas/users/weight/userWeightEntries.schema.js";
-import { addOneInTable, fetchManyFromTable, fetchOneFromTable, updateOneInTable } from "../../modules/index/index.repository.js";
+import { addOneInTable, fetchManyFromTable, fetchOneFromTable, QueryCondition, updateOneInTable } from "../../modules/index/index.repository.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { prettyFloat } from "../math.js";
 import { USER_WEIGHT_MOVING_AVERAGES_TABLE, UserWeightMovingAveragesInterface } from "../../db/schemas/users/weight/userWeightMovingAverages.schema.js";
 import { USER_HEALTH_PREFERENCES_TABLE, UserHealthPreferencesInterface } from "../../db/schemas/users/userHealthPreferences.schema.js";
+import { USER_WEIGHT_VIEWS_TABLE, UserWeightViewsInterface } from "../../db/schemas/users/weight/userWeightViews.schema.js";
 
 export const reCalculateUserWeightMovingAverages = async ({
     userId,
@@ -147,8 +148,166 @@ export const reCalculateUserWeightMovingAverages = async ({
             }
         }));
         console.log(dayPayload);
+        // any views that have dates between from and to, recalculate the summary
+        const fixedTillNowViews = await fetchManyFromTable({
+            table: USER_WEIGHT_VIEWS_TABLE,
+            where: [
+                {
+                    field: "user_id",
+                    operator: "=",
+                    value: userId,
+                },
+                {
+                    field: "duration_type",
+                    operator: "=",
+                    value: "till-now",
+                },
+                {
+                    field: "from_date",
+                    operator: ">=",
+                    value: from,
+                },
+                {
+                    field: "from_date",
+                    operator: "<=",
+                    value: to,
+                },
+            ],
+            select: ["id"]
+        }) as UserWeightViewsInterface[];
+        const fixedTillDateViews = await fetchManyFromTable({
+            table: USER_WEIGHT_VIEWS_TABLE,
+            where: [
+                {
+                    field: "user_id",
+                    operator: "=",
+                    value: userId,
+                },
+                {
+                    field: "duration_type",
+                    operator: "=",
+                    value: "till-date",
+                },
+                {
+                    field: "to_date",
+                    operator: ">=",
+                    value: from,
+                },
+                {
+                    field: "from_date",
+                    operator: "<=",
+                    value: to,
+                },
+            ],
+            select: ["id"]
+        }) as UserWeightViewsInterface[];
+        await Promise.all([...fixedTillNowViews.map(view => view.id), ...fixedTillDateViews.map(view => view.id)].map(async (viewId) => {
+            if (!viewId) {
+                return;
+            }
+            await recalculateUserWeightViewSummaryService({
+                userId,
+                viewId,
+            })
+        }));
 
     } catch (error) {
         console.error('Error re-calculating user weight moving averages', error);
+    }
+}
+
+export const recalculateUserWeightViewSummaryService = async ({
+    userId,
+    viewId,
+}: {
+    userId: string,
+    viewId: string,
+}) => {
+    try {
+        if (!userId) {
+            throw new AppError("User ID is required", 400);
+        }
+        let timezone: string = "Asia/Kolkata";
+        const userPreferences = await fetchOneFromTable({
+            table: USER_HEALTH_PREFERENCES_TABLE,
+            filter: {
+                user_id: userId,
+            },
+        }) as UserHealthPreferencesInterface | null;
+        if (userPreferences) {
+            timezone = userPreferences.timezone;
+        }
+        if (!viewId) {
+            throw new AppError("View ID is required", 400);
+        }
+        const view = await fetchOneFromTable({
+            table: USER_WEIGHT_VIEWS_TABLE,
+            filter: {
+                id: viewId,
+                user_id: userId,
+            },
+        }) as UserWeightViewsInterface | null;
+        if (!view) {
+            throw new AppError("View not found", 404);
+        }
+        const fromDateObj = DateTime.fromJSDate(view.from_date, { zone: timezone });
+        let toDateObj: DateTime | null = null;
+        if (!fromDateObj.isValid) {
+            throw new AppError("Invalid from date", 400);
+        }
+        const filterForWeightEntries = [
+            {
+                field: "user_id",
+                operator: "=",
+                value: userId,
+            },
+            {
+                field: "date",
+                operator: ">=",
+                value: fromDateObj.toISO(),
+            },
+        ]
+        if (view.duration_type === "till-date") {
+            if (!view.to_date) {
+                throw new AppError("To date is required", 400);
+            }
+            toDateObj = DateTime.fromJSDate(view.to_date as Date, { zone: timezone });
+            if (!toDateObj.isValid) {
+                throw new AppError("Invalid to date", 400);
+            }
+            if (!toDateObj.toISO()) {
+                throw new AppError("To date is required", 400);
+            }
+            filterForWeightEntries.push({
+                field: "date",
+                operator: "<=",
+                value: toDateObj.toISO() as string,
+            });
+        }
+        const weightEntries = await fetchManyFromTable({
+            table: USER_WEIGHT_ENTRIES_TABLE,
+            where: filterForWeightEntries as QueryCondition[],
+            select: ["weight", "day", "date"]
+        }) as UserWeightEntriesInterface[];
+        const movingAverages = await fetchManyFromTable({
+            table: USER_WEIGHT_MOVING_AVERAGES_TABLE,
+            where: filterForWeightEntries as QueryCondition[],
+            select: ["three_day_moving_average", "seven_day_moving_average", "day", "date"]
+        }) as UserWeightMovingAveragesInterface[];
+        const viewUpdatePayload: Partial<UserWeightViewsInterface> = {
+            weight_entries: weightEntries,
+            weight_moving_averages: movingAverages,
+        };
+        await updateOneInTable({
+            table: USER_WEIGHT_VIEWS_TABLE,
+            filter: { id: viewId },
+            data: viewUpdatePayload,
+        }) as UserWeightViewsInterface;
+        return {
+            user_weight_view: view,
+        }
+    } catch (error) {
+        console.error('Error recalculating user weight view summary', error);
+        throw new AppError("Error recalculating user weight view summary", 500);
     }
 }

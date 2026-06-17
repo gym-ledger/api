@@ -10,9 +10,11 @@ export const getUserPreferencesService = async ({
 }) => {
     const preferences = await fetchOneFromTable({
         table: USER_HEALTH_PREFERENCES_TABLE,
-        filter: {
-            user_id: userId,
-        },
+        where: [{
+            field: "user_id",
+            operator: "=",
+            value: userId,
+        }],
         select: ["timezone", "weight_units", "height_units", "height"],
     }) as UserHealthPreferencesInterface | null;
     return {
@@ -45,9 +47,11 @@ export const updateUserPreferencesService = async ({
     }
     let preferences = await fetchOneFromTable({
         table: USER_HEALTH_PREFERENCES_TABLE,
-        filter: {
-            user_id: userId,
-        },
+        where: [{
+            field: "user_id",
+            operator: "=",
+            value: userId,
+        }],
     }) as UserHealthPreferencesInterface | null;
     if (!preferences) {
         if (!toUpdate.timezone) {
@@ -72,9 +76,11 @@ export const updateUserPreferencesService = async ({
     } else {
         preferences = await updateOneInTable({
             table: USER_HEALTH_PREFERENCES_TABLE,
-            filter: {
-                user_id: userId,
-            },
+            where: [{
+                field: "user_id",
+                operator: "=",
+                value: userId,
+            }],
             data: toUpdate,
         }) as UserHealthPreferencesInterface;
     }

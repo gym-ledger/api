@@ -1,5 +1,5 @@
 import { AppError } from "../../../shared/errors/AppError.js";
-import { addOneInTable, fetchOneFromTable } from "../../index/index.repository.js";
+import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { ADMIN_USER_TABLE, AdminUserInterface } from "../../../db/schemas/admin/admin.schema.js";
 import { generateAdminAccessToken, generateRefreshToken, hashPassword, verifyPassword } from "../../../utils/authentication.js";
 import { hashToken } from "../../../utils/crypto.js";
@@ -15,9 +15,13 @@ export const loginAdminAuthService = async (data: { email: string, password: str
 
     let admin = await fetchOneFromTable({
         table: ADMIN_USER_TABLE,
-        filter: {
-            email: email,
-        },
+        where: [
+            {
+                field: "email",
+                operator: "=",
+                value: email,
+            },
+        ],
     }) as AdminUserInterface;
 
     if (!admin) {
@@ -46,9 +50,64 @@ export const loginAdminAuthService = async (data: { email: string, password: str
         sessionId: refreshTokenHash,
     });
 
+    await updateOneInTable({
+        table: ADMIN_USER_TABLE,
+        data: {
+            refresh_token_hash: refreshTokenHash,
+            refresh_token_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+        },
+        where: [
+            {
+                field: "id",
+                operator: "=",
+                value: admin.id,
+            },
+        ],
+    });
+
     return {
         admin,
         accessToken,
         refreshToken,
     };
+}
+
+export const refreshAdminTokensService = async (refreshToken: string) => {
+    if (!refreshToken) {
+        throw new AppError("Refresh token is required", 400);
+    }
+    const adminUser = await fetchOneFromTable({
+        table: ADMIN_USER_TABLE,
+        where: [{
+            field: "refresh_token_hash",
+            operator: "=",
+            value: hashToken(refreshToken),
+        }],
+        useSoftDelete: false,
+    }) as AdminUserInterface;
+    if (!adminUser) {
+        throw new AppError("Invalid refresh token", 401);
+    }
+    if (adminUser.refresh_token_expires_at < new Date()) {
+        throw new AppError("Refresh token expired", 401);
+    }
+    const newRefreshToken = generateRefreshToken();
+    const refreshTokenHash = hashToken(newRefreshToken);
+    const accessToken = await generateAdminAccessToken({
+        userId: adminUser.id,
+        sessionId: refreshTokenHash,
+    });
+    await updateOneInTable({
+        table: ADMIN_USER_TABLE,
+        data: {
+            refresh_token_hash: refreshTokenHash,
+            refresh_token_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+        },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: adminUser.id,
+        }],
+    });
+    return { accessToken, refreshToken: newRefreshToken };
 }

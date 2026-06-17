@@ -4,6 +4,9 @@ CREATE TABLE IF NOT EXISTS program_day_sessions (
     workout_program_day_id UUID NOT NULL
         REFERENCES program_days(id),
 
+    workout_program_version_id UUID NOT NULL
+        REFERENCES workout_program_versions(id),
+
     name VARCHAR(255) NOT NULL,
 
     added_by_admin_user_id UUID
@@ -37,7 +40,7 @@ CREATE TABLE IF NOT EXISTS program_day_sessions (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_program_day_sessions_workout_program_day_name
-ON program_day_sessions(workout_program_day_id, name)
+ON program_day_sessions(workout_program_day_id, workout_program_version_id, name)
 WHERE deleted_at IS NULL;
 
 DROP TRIGGER IF EXISTS trigger_program_day_sessions_updated_at

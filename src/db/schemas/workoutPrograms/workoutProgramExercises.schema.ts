@@ -5,6 +5,7 @@ export const WORKOUT_PROGRAM_EXERCISES_TABLE = "workout_program_exercises";
 export interface WorkoutProgramExercisesInterface {
     id: string;
     workout_program_day_session_id: string;
+    workout_program_version_id: string;
     exercise_id: string | null;
     exercise: ExercisesInterface | null;
     exercise_order: number;

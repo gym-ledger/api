@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS workout_program_versions (
     version_number INTEGER NOT NULL,
     UNIQUE (workout_program_id, version_number),
 
+    version_name VARCHAR(255),
+
     
     training_days INTEGER NOT NULL,
 

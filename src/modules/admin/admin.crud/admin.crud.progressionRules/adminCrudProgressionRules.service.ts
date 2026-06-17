@@ -12,7 +12,7 @@ export const listProgressionRulesForAdminService = async (data: { page?: number,
     };
     const progressionRules = await fetchPaginatedResultsFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter,
+        where: [],
 
         limit,
         page,
@@ -41,7 +41,11 @@ export const viewProgressionRuleForAdminService = async (data: { id: string }) =
 
     const progressionRule = await fetchOneFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ProgressionRulesInterface;
     if (!progressionRule) {
         throw new AppError("Progression rule not found", 404);
@@ -63,7 +67,11 @@ export const createProgressionRuleForAdminService = async (data: { name: string,
     }
     const duplicateByName = await fetchOneFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter: { name },
+        where: [{
+            field: "name",
+            operator: "=",
+            value: name,
+        }],
     }) as ProgressionRulesInterface;
     if (duplicateByName) {
         throw new AppError("Progression rule with this name already exists", 400);
@@ -89,7 +97,11 @@ export const updateProgressionRuleForAdminService = async (data: { id: string, n
 
     const progressionRule = await fetchOneFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ProgressionRulesInterface;
     if (!progressionRule) {
         throw new AppError("Progression rule not found", 404);
@@ -98,7 +110,15 @@ export const updateProgressionRuleForAdminService = async (data: { id: string, n
     if (name) {
         const otherDuplicateByName = await fetchOneFromTable({
             table: PROGRESSION_RULES_TABLE,
-            filter: { name, id: { operator: "!=", value: id } },
+            where: [{
+                field: "name",
+                operator: "=",
+                value: name,
+            }, {
+                field: "id",
+                operator: "!=",
+                value: id,
+            }],
         }) as ProgressionRulesInterface;
         if (otherDuplicateByName) {
             throw new AppError("Progression rule with this name already exists", 400);
@@ -115,7 +135,11 @@ export const updateProgressionRuleForAdminService = async (data: { id: string, n
     const updatedProgressionRule = await updateOneInTable({
         table: PROGRESSION_RULES_TABLE,
         data: toUpdate,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ProgressionRulesInterface;
     return updatedProgressionRule;
 }
@@ -132,14 +156,22 @@ export const deleteProgressionRuleForAdminService = async (data: { id: string })
 
     const progressionRule = await fetchOneFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ProgressionRulesInterface;
     if (!progressionRule) {
         throw new AppError("Progression rule not found", 404);
     }
     await deleteOneFromTable({
         table: PROGRESSION_RULES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     });
     return progressionRule;
 }

@@ -5,6 +5,7 @@ export const PROGRAM_DAY_SESSIONS_TABLE = "program_day_sessions";
 export interface ProgramDaySessionsInterface {
     id: string;
     workout_program_day_id: string;
+    workout_program_version_id: string;
     name: string;
     added_by_admin_user_id: string | null;
     added_by_user_id: string | null;

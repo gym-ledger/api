@@ -7,7 +7,9 @@ export interface UserWeightViewsInterface {
 
     from_date: Date;
 
-    to_date: Date;
+    duration_type: "till-now" | "till-date";
+
+    to_date: Date | null;
 
     weight_entries: any[];
 

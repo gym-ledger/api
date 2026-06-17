@@ -33,7 +33,8 @@ export const viewWorkoutProgramForAdmin = async (req: Request, res: Response, ne
 
 export const createWorkoutProgramForAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await createWorkoutProgramForAdminService(req.body);
+
+        const data = await createWorkoutProgramForAdminService({ ...req.body, added_by_admin_user_id: req.adminUserId as string });
 
         return responseSend(res, 200, "Workout program created successfully", data);
 

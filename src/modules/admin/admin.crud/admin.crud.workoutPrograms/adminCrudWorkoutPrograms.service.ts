@@ -1,21 +1,27 @@
 import { AppError } from "../../../../shared/errors/AppError.js";
 import { addOneInTable, deleteOneFromTable, fetchManyFromTable, fetchOneFromTable, fetchPaginatedResultsFromTable, updateOneInTable } from "../../../index/index.repository.js";
-import { WORKOUT_PROGRAMS_TABLE, WorkoutProgramsInterface } from "../../../../db/schemas/workoutPrograms/workoutPrograms.schema.js";
+import { WORKOUT_PROGRAM_VERSIONS_TABLE, WORKOUT_PROGRAMS_TABLE, WorkoutProgramsInterface, WorkoutProgramVersionsInterface } from "../../../../db/schemas/workoutPrograms/workoutPrograms.schema.js";
 import { fetchWorkoutProgramWithVersionsService } from "../adminCrud.repository.js";
 import { isValidUUID } from "../../../../utils/validation.js";
-import { ProgramDaysInterface } from "../../../../db/schemas/workoutPrograms/programDays.schema.js";
+import { PROGRAM_DAYS_TABLE, ProgramDaysInterface } from "../../../../db/schemas/workoutPrograms/programDays.schema.js";
 import { responseSend } from "../../../../helpers/response-send.js";
+import { PROGRAM_DAY_SESSIONS_TABLE, ProgramDaySessionsInterface } from "../../../../db/schemas/workoutPrograms/programDaySessions.schema.js";
+import { WORKOUT_PROGRAM_EXERCISES_TABLE, WorkoutProgramExercisesInterface } from "../../../../db/schemas/workoutPrograms/workoutProgramExercises.schema.js";
+import { pg } from "../../../../infrastructure/postgres/index.js";
+import slugify from "slugify";
 
 
 export const listWorkoutProgramsForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
     const { page = 1, limit = 10, search = "", createdBy = "admin_user" } = data;
-    const filter = {
-        // search: search,
-        // createdBy: createdBy,
-    };
     const workoutPrograms = await fetchPaginatedResultsFromTable({
         table: WORKOUT_PROGRAMS_TABLE,
-        filter,
+        where: [
+            {
+                field: "name",
+                operator: "ILIKE",
+                value: `%${search}%`,
+            },
+        ],
         limit,
         page,
     }) as {
@@ -55,7 +61,6 @@ export const createWorkoutProgramForAdminService = async (data: {
     image: string,
     video: string,
     program_days: ProgramDaysInterface[],
-    training_days: number,
     split_type: string,
     session_ordering_logic: string,
     duration_type: string,
@@ -76,7 +81,7 @@ export const createWorkoutProgramForAdminService = async (data: {
         "version_visibility": "public",
         "days": [
             {
-                "dayNumber": 1,
+                "day_number": 1,
                 "name": "",
                 "sessions": [
                     {
@@ -104,7 +109,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 2,
+                "day_number": 2,
                 "name": "",
                 "sessions": [
                     {
@@ -117,7 +122,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 3,
+                "day_number": 3,
                 "name": "",
                 "sessions": [
                     {
@@ -130,7 +135,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 4,
+                "day_number": 4,
                 "name": "",
                 "sessions": [
                     {
@@ -143,7 +148,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 5,
+                "day_number": 5,
                 "name": "",
                 "sessions": [
                     {
@@ -156,7 +161,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 6,
+                "day_number": 6,
                 "name": "",
                 "sessions": [
                     {
@@ -169,7 +174,7 @@ export const createWorkoutProgramForAdminService = async (data: {
                 "visibility": "public"
             },
             {
-                "dayNumber": 7,
+                "day_number": 7,
                 "name": "",
                 "sessions": [
                     {
@@ -187,7 +192,6 @@ export const createWorkoutProgramForAdminService = async (data: {
     const {
         name,
         description,
-        training_days,
         split_type,
         session_ordering_logic,
         duration_type,
@@ -202,26 +206,26 @@ export const createWorkoutProgramForAdminService = async (data: {
     }
     if (program_days) {
         for (const programDay of program_days) {
-            if (!programDay.name) {
+            if (program_days.length > 0 && !programDay.name) {
                 throw new AppError("Program day name is required", 400);
             }
             if (!programDay.day_number) {
-                throw new AppError("Program day day number is required", 400);
+                throw new AppError("Program day number is required", 400);
             }
             if (!programDay.sessions || programDay.sessions.length === 0) {
                 throw new AppError("Program day sessions are required", 400);
             }
             for (const session of programDay.sessions) {
                 if (!session.name) {
-                    if (programDay.sessions.length > 0) {
+                    if (programDay.sessions.length > 1) {
                         throw new AppError("Session name is required", 400);
                     } else {
                         session.name = "Default";
                     }
                 }
-                if (!session.exercises || session.exercises.length === 0) {
-                    throw new AppError("Session exercises are required", 400);
-                }
+                // if (!session.exercises || session.exercises.length === 0) {
+                //     throw new AppError("Session exercises are required", 400);
+                // }
                 for (const exercise of session.exercises) {
                     if (!exercise.exercise_id) {
                         throw new AppError("Exercise id is required", 400);
@@ -245,9 +249,23 @@ export const createWorkoutProgramForAdminService = async (data: {
             }
         }
     }
-
-    const payload = {
+    const slug = slugify(name, { lower: true, strict: true });
+    const workoutPayload = {
         name: name,
+        slug: slug,
+        visibility: visibility,
+        added_by_admin_user_id: added_by_admin_user_id,
+    }
+    // calculate training days
+    let training_days = 0;
+    for (const programDay of program_days) {
+        for (const session of programDay.sessions) {
+            if (session.exercises.length > 0) {
+                training_days++;
+            }
+        }
+    }
+    const versionPayload = {
         description: description,
         training_days: training_days,
         split_type: split_type,
@@ -255,11 +273,93 @@ export const createWorkoutProgramForAdminService = async (data: {
         duration_type: duration_type,
         duration_weeks: duration_weeks,
         visibility: visibility,
-        program_days: program_days,
         added_by_admin_user_id: added_by_admin_user_id,
+        version_number: 1,
+        workout_program_id: '',
+    }
+    console.log('versionPayload', versionPayload);
+
+    const duplciateSlug = await fetchOneFromTable({
+        table: WORKOUT_PROGRAMS_TABLE,
+        where: [
+            {
+                field: "slug",
+                operator: "=",
+                value: slug,
+            },
+        ],
+    }) as WorkoutProgramsInterface;
+    if (duplciateSlug) {
+        throw new AppError("Workout program with this slug already exists", 400);
     }
 
-    return payload;
+    const workoutProgram = await addOneInTable({
+        table: WORKOUT_PROGRAMS_TABLE,
+        data: workoutPayload,
+    }) as WorkoutProgramsInterface;
+
+    if (workoutProgram) {
+        try {
+            versionPayload.workout_program_id = workoutProgram.id;
+            const workoutProgramVersion = await addOneInTable({
+                table: WORKOUT_PROGRAM_VERSIONS_TABLE,
+                data: versionPayload
+            }) as WorkoutProgramVersionsInterface;
+            if (workoutProgramVersion) {
+                for (const programDayData of program_days) {
+                    programDayData.workout_program_id = workoutProgram.id;
+                    programDayData.workout_program_version_id = workoutProgramVersion.id;
+                    const programDay = await addOneInTable({
+                        table: PROGRAM_DAYS_TABLE,
+                        data: programDayData as unknown as Record<string, unknown>,
+                    }) as ProgramDaysInterface;
+                    if (programDay) {
+                        for (const sessionData of programDay.sessions) {
+                            sessionData.workout_program_day_id = programDay.id;
+                            sessionData.workout_program_version_id = workoutProgramVersion.id;
+                            const session = await addOneInTable({
+                                table: PROGRAM_DAY_SESSIONS_TABLE,
+                                data: sessionData as unknown as Record<string, unknown>,
+                            }) as ProgramDaySessionsInterface;
+                            if (session) {
+                                for (const exerciseData of session.exercises) {
+                                    exerciseData.workout_program_day_session_id = session.id;
+                                    exerciseData.workout_program_version_id = workoutProgramVersion.id;
+                                    const exercise = await addOneInTable({
+                                        table: WORKOUT_PROGRAM_EXERCISES_TABLE,
+                                        data: exerciseData as unknown as Record<string, unknown>,
+                                    }) as WorkoutProgramExercisesInterface;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            await deleteOneFromTable({
+                table: WORKOUT_PROGRAMS_TABLE,
+                where: [
+                    {
+                        field: "id",
+                        operator: "=",
+                        value: workoutProgram.id,
+                    },
+                ],
+            }) as WorkoutProgramsInterface;
+            throw new AppError("Failed to create workout program", 500);
+        }
+    }
+    const query = `SELECT * FROM workout_programs WHERE id = $1;
+    INNER JOIN workout_program_versions ON workout_program_versions.workout_program_id = workout_programs.id
+    INNER JOIN program_days ON program_days.workout_program_version_id = workout_program_versions.id
+    INNER JOIN program_day_sessions ON program_day_sessions.workout_program_day_id = program_days.id
+    INNER JOIN workout_program_exercises ON workout_program_exercises.workout_program_day_session_id = program_day_sessions.id
+    WHERE workout_programs.id = $1;
+    `
+    const result = await pg.query(query, [workoutProgram.id]);
+    return result.rows[0];
+
+    // return workoutProgram;
 }
 
 export const updateWorkoutProgramForAdminService = async (data: { id: string, name: string, description: string, image: string, video: string }) => {

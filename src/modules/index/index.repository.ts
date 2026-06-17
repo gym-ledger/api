@@ -70,6 +70,179 @@ export type FetchManyFromTableParams = {
     limit?: number;
     offset?: number;
 };
+type BuildWhereClauseResult = {
+    whereClause: string;
+    values: unknown[];
+    extraSelects: string[];
+    sortBy?: Record<string, "asc" | "desc">;
+};
+
+export const buildWhereClause = (
+    where: QueryCondition[] = [],
+    initialSortBy?: Record<string, "asc" | "desc">
+): BuildWhereClauseResult => {
+
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+    const extraSelects: string[] = [];
+
+    let sortBy = initialSortBy;
+
+    for (const condition of where) {
+
+        switch (condition.operator) {
+
+            case "=":
+            case "!=":
+            case ">":
+            case "<":
+            case ">=":
+            case "<=":
+            case "ILIKE": {
+
+                values.push(condition.value);
+
+                conditions.push(
+                    `${condition.field} ${condition.operator} $${values.length}`
+                );
+
+                break;
+            }
+
+            case "IN": {
+
+                if (
+                    !Array.isArray(condition.value)
+                    || condition.value.length === 0
+                ) {
+                    break;
+                }
+
+                const placeholders = condition.value.map(v => {
+                    values.push(v);
+
+                    return `$${values.length}`;
+                });
+
+                conditions.push(
+                    `${condition.field} IN (${placeholders.join(", ")})`
+                );
+
+                break;
+            }
+
+            case "IS NULL": {
+
+                conditions.push(
+                    `${condition.field} IS NULL`
+                );
+
+                break;
+            }
+
+            case "RAW": {
+
+                if (condition.raw) {
+                    conditions.push(condition.raw);
+                }
+
+                break;
+            }
+
+            case "FTS": {
+
+                if (
+                    typeof condition.value !== "string"
+                    || !condition.value.trim()
+                ) {
+                    break;
+                }
+
+                values.push(condition.value);
+
+                const placeholder = `$${values.length}`;
+
+                conditions.push(`
+                    search_vector
+                    @@ websearch_to_tsquery(
+                        'english',
+                        ${placeholder}
+                    )
+                `);
+
+                extraSelects.push(`
+                    ts_rank(
+                        search_vector,
+                        websearch_to_tsquery(
+                            'english',
+                            ${placeholder}
+                        )
+                    ) AS rank
+                `);
+
+                sortBy ??= {
+                    rank: "desc",
+                };
+
+                break;
+            }
+
+            default:
+                throw new Error(
+                    `Unsupported operator: ${condition.operator}`
+                );
+        }
+    }
+
+    return {
+        values,
+        extraSelects,
+        sortBy,
+        whereClause:
+            conditions.length > 0
+                ? `WHERE ${conditions.join(" AND ")}`
+                : "",
+    };
+};
+
+export const buildOrderByClause = (
+    sortBy?: Record<string, "asc" | "desc">
+) => {
+
+    if (!sortBy) {
+        return "";
+    }
+
+    const entries = Object.entries(sortBy);
+
+    if (!entries.length) {
+        return "";
+    }
+
+    return `
+        ORDER BY
+        ${entries
+            .map(
+                ([field, dir]) =>
+                    `${field} ${dir.toUpperCase()}`
+            )
+            .join(", ")}
+    `;
+};
+
+export const buildSelectClause = (
+    select?: string[],
+    extraSelects: string[] = []
+) => {
+
+    return `
+        SELECT
+        ${[
+            ...(select ?? ["*"]),
+            ...extraSelects,
+        ].join(", ")}
+    `;
+};
 
 export const fetchPaginatedResultsFromTable = async ({
     table,
@@ -89,266 +262,46 @@ export const fetchPaginatedResultsFromTable = async ({
         totalPages: number;
     };
 }> => {
+
     page = parseInt(page.toString());
-
     limit = parseInt(limit.toString());
-
-    /**
-     * IMPORTANT:
-     * Whitelist tables in production.
-     */
 
     if (!allowedTables.includes(table)) {
         throw new Error(`Invalid table: ${table}`);
     }
 
-    const values: unknown[] = [];
-
-    const conditions: string[] = [];
-
-    const computedExtraSelects: string[] = [
-        ...extraSelects,
-    ];
-
     const offset = (page - 1) * limit;
 
-    /**
-     * WHERE conditions
-     */
-    where.forEach((condition) => {
-        switch (condition.operator) {
-            case "=": {
-                values.push(condition.value);
+    let {
+        values,
+        whereClause,
+        extraSelects: computedExtraSelects,
+        sortBy: computedSortBy,
+    } = buildWhereClause(where, sortBy);
 
-                conditions.push(
-                    `${condition.field} = $${values.length}`
-                );
-
-                break;
-            }
-
-            case "!=": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} != $${values.length}`
-                );
-
-                break;
-            }
-
-            case ">": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} > $${values.length}`
-                );
-
-                break;
-            }
-
-            case "<": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} < $${values.length}`
-                );
-
-                break;
-            }
-
-            case ">=": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} >= $${values.length}`
-                );
-
-                break;
-            }
-
-            case "<=": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} <= $${values.length}`
-                );
-
-                break;
-            }
-
-            case "ILIKE": {
-                values.push(condition.value);
-
-                conditions.push(
-                    `${condition.field} ILIKE $${values.length}`
-                );
-
-                break;
-            }
-
-            case "IN": {
-                if (
-                    !Array.isArray(condition.value)
-                    || condition.value.length === 0
-                ) {
-                    break;
-                }
-
-                const placeholders = condition.value.map((value) => {
-                    values.push(value);
-
-                    return `$${values.length}`;
-                });
-
-                conditions.push(
-                    `${condition.field} IN (${placeholders.join(", ")})`
-                );
-
-                break;
-            }
-
-            case "IS NULL": {
-                conditions.push(
-                    `${condition.field} IS NULL`
-                );
-
-                break;
-            }
-
-            case "FTS": {
-                if (
-                    !condition.value
-                    || typeof condition.value !== "string"
-                    || condition.value.trim() === ""
-                ) {
-                    break;
-                }
-
-                values.push(condition.value);
-
-                const placeholder =
-                    `$${values.length}`;
-
-                conditions.push(`
-                    search_vector
-                    @@
-                    websearch_to_tsquery(
-                        'english',
-                        ${placeholder}
-                    )
-                `);
-
-                computedExtraSelects.push(`
-                    ts_rank(
-                        search_vector,
-                        websearch_to_tsquery(
-                            'english',
-                            ${placeholder}
-                        )
-                    ) AS rank
-                `);
-
-                /**
-                 * Automatically sort by rank
-                 * unless explicitly overridden
-                 */
-                if (!sortBy) {
-                    sortBy = {
-                        rank: "desc",
-                    };
-                }
-
-                break;
-            }
-
-            case "RAW": {
-                if (!condition.raw) {
-                    break;
-                }
-
-                conditions.push(condition.raw);
-
-                break;
-            }
-
-            default: {
-                throw new Error(
-                    `Unsupported operator: ${condition.operator}`
-                );
-            }
-        }
-    });
-
-    /**
-     * Soft delete support
-     */
     if (useSoftDelete) {
-        conditions.push(
-            `deleted_at IS NULL`
-        );
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
     }
 
-    /**
-     * SELECT clause
-     */
-    const selectFields = [
-        ...(select ?? ["*"]),
-        ...computedExtraSelects,
-    ];
+    const selectClause = buildSelectClause(
+        select,
+        [
+            ...extraSelects,
+            ...computedExtraSelects,
+        ]
+    );
 
-    const selectClause =
-        `SELECT ${selectFields.join(", ")}`;
+    const sortByClause =
+        buildOrderByClause(computedSortBy);
 
-    /**
-     * WHERE clause
-     */
-    const whereClause =
-        conditions.length > 0
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
-
-    /**
-     * ORDER BY clause
-     *
-     * IMPORTANT:
-     * Whitelist sortable fields in production.
-     */
-    let sortByClause = "";
-
-    if (sortBy) {
-        const sortEntries =
-            Object.entries(sortBy);
-
-        if (sortEntries.length > 0) {
-            sortByClause = `
-                ORDER BY
-                ${sortEntries
-                    .map(
-                        ([field, direction]) =>
-                            `${field} ${direction.toUpperCase()}`
-                    )
-                    .join(", ")}
-            `;
-        }
-    }
-
-    /**
-     * Pagination
-     */
     values.push(limit);
-
-    const limitPlaceholder =
-        `$${values.length}`;
+    const limitPlaceholder = `$${values.length}`;
 
     values.push(offset);
+    const offsetPlaceholder = `$${values.length}`;
 
-    const offsetPlaceholder =
-        `$${values.length}`;
-
-    /**
-     * Main query
-     */
     const query = `
         ${selectClause}
         FROM ${table}
@@ -358,9 +311,6 @@ export const fetchPaginatedResultsFromTable = async ({
         OFFSET ${offsetPlaceholder}
     `;
 
-    /**
-     * Count query
-     */
     const countQuery = `
         SELECT COUNT(*) AS total_count
         FROM ${table}
@@ -368,13 +318,20 @@ export const fetchPaginatedResultsFromTable = async ({
     `;
 
     try {
+
         const [rowsResult, countResult] =
             await Promise.all([
-                pg.query(query, values),
+                pg.query(
+                    query,
+                    values
+                ),
 
                 pg.query(
                     countQuery,
-                    values.slice(0, values.length - 2)
+                    values.slice(
+                        0,
+                        values.length - 2
+                    )
                 ),
             ]);
 
@@ -390,15 +347,16 @@ export const fetchPaginatedResultsFromTable = async ({
                 limit,
                 totalCount,
 
-                totalPages:
-                    Math.ceil(totalCount / limit),
+                totalPages: Math.ceil(
+                    totalCount / limit
+                ),
             },
         };
+
     } catch (error) {
+
         console.log(query);
-
         console.log(values);
-
         console.log(error);
 
         throw error;
@@ -416,32 +374,63 @@ export const fetchManyFromTable = async ({
     offset = 0,
 }: FetchManyFromTableParams): Promise<unknown[]> => {
 
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
     offset = parseInt(offset.toString());
 
     if (limit) {
         limit = parseInt(limit.toString());
     }
 
-    /**
-     * IMPORTANT:
-     * Whitelist tables in production.
-     */
+    let {
+        values,
+        whereClause,
+        extraSelects: computedExtraSelects,
+        sortBy: computedSortBy,
+    } = buildWhereClause(where, sortBy);
 
-    if (!allowedTables.includes(table)) {
-        throw new Error(`Invalid table: ${table}`);
+    if (useSoftDelete) {
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
     }
 
-    const values: unknown[] = [];
+    const query = `
+        ${buildSelectClause(
+        select,
+        [
+            ...extraSelects,
+            ...computedExtraSelects,
+        ]
+    )}
+        FROM ${table}
+        ${whereClause}
+        ${buildOrderByClause(computedSortBy)}
+        ${limit ? `LIMIT ${limit}` : ""}
+        ${offset ? `OFFSET ${offset}` : ""}
+    `;
 
-    const conditions: string[] = [];
+    try {
+        const rowsResult = await pg.query(
+            query,
+            values
+        );
 
-    const computedExtraSelects: string[] = [
-        ...extraSelects,
-    ];
+        return rowsResult.rows;
 
-    /**
-     * WHERE conditions
-     */
+    } catch (error) {
+        console.log(query);
+        console.log(values);
+        console.log(error);
+
+        throw error;
+    }
+};
+
+const handleWhereConditions = (where: QueryCondition[], values: unknown[], conditions: string[], sortBy: Record<string, "asc" | "desc"> = {}, computedExtraSelects: string[] = []) => {
+
     where.forEach((condition) => {
         switch (condition.operator) {
             case "=": {
@@ -606,186 +595,68 @@ export const fetchManyFromTable = async ({
             }
         }
     });
-
-    /**
-     * Soft delete support
-     */
-    if (useSoftDelete) {
-        conditions.push(
-            `deleted_at IS NULL`
-        );
-    }
-
-    /**
-     * SELECT clause
-     */
-    const selectFields = [
-        ...(select ?? ["*"]),
-        ...computedExtraSelects,
-    ];
-
-    const selectClause =
-        `SELECT ${selectFields.join(", ")}`;
-
-    /**
-     * WHERE clause
-     */
-    const whereClause =
-        conditions.length > 0
-            ? `WHERE ${conditions.join(" AND ")}`
-            : "";
-
-    /**
-     * ORDER BY clause
-     *
-     * IMPORTANT:
-     * Whitelist sortable fields in production.
-     */
-    let sortByClause = "";
-
-    if (sortBy) {
-        const sortEntries =
-            Object.entries(sortBy);
-
-        if (sortEntries.length > 0) {
-            sortByClause = `
-                ORDER BY
-                ${sortEntries
-                    .map(
-                        ([field, direction]) =>
-                            `${field} ${direction.toUpperCase()}`
-                    )
-                    .join(", ")}
-            `;
-        }
-    }
-
-
-    /**
-     * Main query
-     */
-    const query = `
-        ${selectClause}
-        FROM ${table}
-        ${whereClause}
-        ${sortByClause}
-        ${limit ? `LIMIT ${limit}` : ''}
-        ${offset ? `OFFSET ${offset}` : ''}
-    `;
-
-
-    try {
-        const rowsResult =
-            await pg.query(query, values);
-
-
-        return rowsResult.rows;
-    } catch (error) {
-        console.log(query);
-
-        console.log(values);
-
-        console.log(error);
-
-        throw error;
-    }
-};
-
+    return { values, conditions, computedExtraSelects, sortBy };
+}
 export const fetchOneFromTable = async ({
     table,
-    filter,
+    where = [],
     select,
     sortBy,
     useSoftDelete = true,
 }: {
     table: string;
-    filter?: IFilter;
+    where?: QueryCondition[];
     select?: string[];
     sortBy?: Record<string, "asc" | "desc">;
     useSoftDelete?: boolean;
 }): Promise<unknown> => {
-    const values: unknown[] = [];
 
-    const conditions: string[] = [];
-
-    Object.entries(filter ?? {}).forEach(
-        ([key, rawValue]) => {
-            let operator = "=";
-
-            let value = rawValue;
-
-            if (
-                typeof rawValue === "object"
-                && rawValue !== null
-                && "operator" in rawValue
-                && "value" in rawValue
-            ) {
-                operator = rawValue.operator as "=" | "!=";
-
-                value = rawValue.value;
-            }
-
-            values.push(value);
-
-            conditions.push(
-                `${key} ${operator} $${values.length
-                }`
-            );
-        }
-    );
-
-    if (useSoftDelete) {
-        conditions.push(
-            "deleted_at IS NULL"
-        );
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
     }
 
-    const selectClause = select
-        ? `SELECT ${select.join(", ")}`
-        : "SELECT *";
+    let {
+        values,
+        whereClause,
+        extraSelects: computedExtraSelects,
+        sortBy: computedSortBy,
+    } = buildWhereClause(where, sortBy);
 
-    const sortByClause = sortBy
-        ? `ORDER BY ${Object.entries(
-            sortBy
-        )
-            .map(
-                ([key, value]) =>
-                    `${key} ${value}`
-            )
-            .join(", ")}`
-        : "";
-
-    const whereClause =
-        conditions.length
-            ? `WHERE ${conditions.join(
-                " AND "
-            )}`
-            : "";
+    if (useSoftDelete) {
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
+    }
 
     const query = `
-        ${selectClause}
+        ${buildSelectClause(
+        select,
+        computedExtraSelects
+    )}
         FROM ${table}
         ${whereClause}
-        ${sortByClause}
+        ${buildOrderByClause(computedSortBy)}
         LIMIT 1
     `;
 
     try {
+
         const result = await pg.query(
             query,
             values
         );
 
         return result.rows[0];
-    } catch (error) {
-        console.log(query);
 
+    } catch (error) {
+
+        console.log(query);
+        console.log(values);
         console.log(error);
 
         throw error;
     }
-
-}
+};
 
 export const addOneInTable = async ({
     table,
@@ -794,56 +665,102 @@ export const addOneInTable = async ({
     table: string;
     data: Record<string, unknown>;
 }): Promise<unknown> => {
-    // in insert use $1, $2, $3, ... instead of 'value'
-    const values = Object.values(data).map((value, index) => typeof value === "undefined" || value === null ? null : typeof value === "string" ? `${value}` : value instanceof Date ? `${(value as Date).toISOString()}` : value);
-    const query = `INSERT INTO ${table} (${Object.keys(data).join(", ")}) VALUES (${values.map((value, index) => `$${index + 1}`).join(", ")}) RETURNING *`;
+
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
+    const keys = Object.keys(data);
+
+    if (keys.length === 0) {
+        throw new Error(
+            "Cannot insert empty data object"
+        );
+    }
+
+    const values = Object.values(data).map(
+        (value) => {
+
+            if (
+                value === undefined
+                || value === null
+            ) {
+                return null;
+            }
+
+            if (value instanceof Date) {
+                return value.toISOString();
+            }
+
+            return value;
+        }
+    );
+
+    const placeholders = values.map(
+        (_, index) => `$${index + 1}`
+    );
+
+    const query = `
+        INSERT INTO ${table}
+        (${keys.join(", ")})
+        VALUES (${placeholders.join(", ")})
+        RETURNING *
+    `;
+
     try {
-        const result = await pg.query(query, values);
+
+        const result = await pg.query(
+            query,
+            values
+        );
+
         return result.rows[0];
+
     } catch (error) {
+
         console.log(query);
         console.log(values);
         console.log(error);
+
         throw error;
     }
-}
+};
 
 export const updateOneInTable = async ({
     table,
     data,
-    filter,
+    where = [],
     useSoftDelete = true,
 }: {
     table: string;
     data: Record<string, unknown>;
-    filter?: Record<string, unknown>;
+    where: QueryCondition[];
     useSoftDelete?: boolean;
 }): Promise<unknown> => {
 
-    const values: unknown[] = [];
-    const conditions: string[] = [];
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
 
-    // WHERE clause
-    Object.entries(filter ?? {}).forEach(
-        ([key, value], index) => {
-            values.push(value);
+    let {
+        values,
+        whereClause,
+    } = buildWhereClause(where);
 
-            conditions.push(
-                `${key} = $${index + 1}`
-            );
-        }
-    );
+    if (useSoftDelete) {
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
+    }
 
-    // SET clause
+    const dataValues = Object.values(data);
+
     const setClause = Object.keys(data)
-        .map((key, index) =>
-            `${key} = $${values.length + index + 1}`
+        .map(
+            (key, index) =>
+                `${key} = $${values.length + index + 1}`
         )
         .join(", ");
-
-    const whereClause = conditions.length
-        ? `WHERE ${conditions.join(" AND ")}`
-        : "";
 
     const query = `
         UPDATE ${table}
@@ -853,14 +770,19 @@ export const updateOneInTable = async ({
     `;
 
     try {
+
         const result = await pg.query(
             query,
-            [...values, ...Object.values(data)]
+            [
+                ...values,
+                ...dataValues,
+            ]
         );
 
         return result.rows[0];
 
     } catch (error) {
+
         console.log(data);
         console.log(query);
         console.log(values);
@@ -872,36 +794,309 @@ export const updateOneInTable = async ({
 
 export const deleteOneFromTable = async ({
     table,
-    filter,
+    where = [],
     useSoftDelete = true,
 }: {
     table: string;
-    filter?: Record<string, unknown>;
+    where?: QueryCondition[];
     useSoftDelete?: boolean;
 }): Promise<unknown> => {
-    const values: unknown[] = [];
-    const conditions: string[] = [];
 
-    Object.entries(filter ?? {}).forEach(
-        ([key, value], index) => {
-            values.push(value);
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
 
-            conditions.push(
-                `${key} = $${index + 1}`
+    let {
+        values,
+        whereClause,
+    } = buildWhereClause(where);
+
+    if (useSoftDelete) {
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
+
+        const query = `
+            UPDATE ${table}
+            SET deleted_at = NOW()
+            ${whereClause}
+            RETURNING *
+        `;
+
+        try {
+
+            const result = await pg.query(
+                query,
+                values
             );
+
+            return result.rows[0];
+
+        } catch (error) {
+
+            console.log(query);
+            console.log(values);
+            console.log(error);
+
+            throw error;
         }
-    );
-    const whereClause = conditions.length
-        ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    } else {
+
+        const query = `
+            DELETE FROM ${table}
+            ${whereClause}
+            RETURNING *
+        `;
+
+        try {
+
+            const result = await pg.query(
+                query,
+                values
+            );
+
+            return result.rows[0];
+
+        } catch (error) {
+
+            console.log(query);
+            console.log(values);
+            console.log(error);
+
+            throw error;
+        }
+    }
+};
+export const addManyInTable = async ({
+    table,
+    data,
+}: {
+    table: string;
+    data: Record<string, unknown>[];
+}): Promise<unknown[]> => {
+
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
+    if (data.length === 0) {
+        return [];
+    }
+
+    const keys = Object.keys(data[0]);
+
+    if (keys.length === 0) {
+        throw new Error(
+            "Cannot insert empty data objects"
+        );
+    }
+
+    const values: unknown[] = [];
+
+    const rowPlaceholders = data.map((row, rowIndex) => {
+
+        const placeholders = keys.map((key, colIndex) => {
+
+            const value = row[key];
+
+            values.push(
+                value === undefined || value === null
+                    ? null
+                    : value instanceof Date
+                        ? value.toISOString()
+                        : value
+            );
+
+            return `$${rowIndex * keys.length + colIndex + 1}`;
+        });
+
+        return `(${placeholders.join(", ")})`;
+    });
+
+    const query = `
+        INSERT INTO ${table}
+        (${keys.join(", ")})
+        VALUES
+        ${rowPlaceholders.join(", ")}
+        RETURNING *
+    `;
+
+    try {
+
+        const result = await pg.query(
+            query,
+            values
+        );
+
+        return result.rows;
+
+    } catch (error) {
+
+        console.log(query);
+        console.log(values);
+        console.log(error);
+
+        throw error;
+    }
+};
+
+export const deleteManyInTable = async ({
+    table,
+    where = [],
+    useSoftDelete = true,
+}: {
+    table: string;
+    where?: QueryCondition[];
+    useSoftDelete?: boolean;
+}): Promise<unknown[]> => {
+
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
+    if (where.length === 0) {
+        throw new Error(
+            "Refusing to delete without WHERE conditions"
+        );
+    }
+
+    let {
+        values,
+        whereClause,
+    } = buildWhereClause(where);
 
     if (useSoftDelete) {
 
-        const query = `UPDATE ${table} SET deleted_at = NOW() ${whereClause} RETURNING *`;
-        const result = await pg.query(query, values);
-        return result.rows[0];
-    } else {
-        const query = `DELETE FROM ${table} ${whereClause} RETURNING *`;
-        const result = await pg.query(query, values);
-        return result.rows[0];
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
+
+        const query = `
+            UPDATE ${table}
+            SET deleted_at = NOW()
+            ${whereClause}
+            RETURNING *
+        `;
+
+        try {
+
+            const result = await pg.query(
+                query,
+                values
+            );
+
+            return result.rows;
+
+        } catch (error) {
+
+            console.log(query);
+            console.log(values);
+            console.log(error);
+
+            throw error;
+        }
+
     }
-}
+
+    const query = `
+        DELETE FROM ${table}
+        ${whereClause}
+        RETURNING *
+    `;
+
+    try {
+
+        const result = await pg.query(
+            query,
+            values
+        );
+
+        return result.rows;
+
+    } catch (error) {
+
+        console.log(query);
+        console.log(values);
+        console.log(error);
+
+        throw error;
+    }
+};
+export const updateManyInTable = async ({
+    table,
+    data,
+    where = [],
+    useSoftDelete = true,
+}: {
+    table: string;
+    data: Record<string, unknown>;
+    where?: QueryCondition[];
+    useSoftDelete?: boolean;
+}): Promise<unknown[]> => {
+
+    if (!allowedTables.includes(table)) {
+        throw new Error(`Invalid table: ${table}`);
+    }
+
+    if (where.length === 0) {
+        throw new Error(
+            "Refusing to update without WHERE conditions"
+        );
+    }
+
+    if (Object.keys(data).length === 0) {
+        throw new Error(
+            "No fields provided for update"
+        );
+    }
+
+    let {
+        values,
+        whereClause,
+    } = buildWhereClause(where);
+
+    if (useSoftDelete) {
+        whereClause = whereClause
+            ? `${whereClause} AND deleted_at IS NULL`
+            : `WHERE deleted_at IS NULL`;
+    }
+
+    const dataValues = Object.values(data);
+
+    const setClause = Object.keys(data)
+        .map(
+            (key, index) =>
+                `${key} = $${values.length + index + 1}`
+        )
+        .join(", ");
+
+    const query = `
+        UPDATE ${table}
+        SET ${setClause}
+        ${whereClause}
+        RETURNING *
+    `;
+
+    try {
+
+        const result = await pg.query(
+            query,
+            [
+                ...values,
+                ...dataValues,
+            ]
+        );
+
+        return result.rows;
+
+    } catch (error) {
+
+        console.log(data);
+        console.log(query);
+        console.log(values);
+        console.log(error);
+
+        throw error;
+    }
+};

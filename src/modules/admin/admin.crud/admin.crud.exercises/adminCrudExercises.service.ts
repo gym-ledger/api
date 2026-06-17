@@ -56,7 +56,11 @@ export const viewExerciseForAdminService = async (data: { id: string }) => {
 
     const exercise = await fetchOneFromTable({
         table: EXERCISES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ExercisesInterface;
     if (!exercise) {
         throw new AppError("Exercise not found", 404);
@@ -77,7 +81,11 @@ export const createExerciseForAdminService = async (data: { name: string, descri
 
     const duplicateBySlug = await fetchOneFromTable({
         table: EXERCISES_TABLE,
-        filter: { slug },
+        where: [{
+            field: "slug",
+            operator: "=",
+            value: slug,
+        }],
     }) as ExercisesInterface;
     if (duplicateBySlug) {
         throw new AppError("Exercise with this slug already exists", 400);
@@ -103,7 +111,11 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
 
     const exercise = await fetchOneFromTable({
         table: EXERCISES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ExercisesInterface;
     if (!exercise) {
         throw new AppError("Exercise not found", 404);
@@ -116,7 +128,15 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
         }
         const otherDuplicateBySlug = await fetchOneFromTable({
             table: EXERCISES_TABLE,
-            filter: { slug, id: { operator: "!=", value: id } },
+            where: [{
+                field: "slug",
+                operator: "=",
+                value: slug,
+            }, {
+                field: "id",
+                operator: "!=",
+                value: id,
+            }],
         }) as ExercisesInterface;
         if (otherDuplicateBySlug) {
             throw new AppError("Exercise with this slug already exists", 400);
@@ -134,7 +154,11 @@ export const updateExerciseForAdminService = async (data: { id: string, name: st
     const updatedExercise = await updateOneInTable({
         table: EXERCISES_TABLE,
         data: toUpdate,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ExercisesInterface;
     return updatedExercise;
 }
@@ -151,14 +175,22 @@ export const deleteExerciseForAdminService = async (data: { id: string }) => {
 
     const exercise = await fetchOneFromTable({
         table: EXERCISES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     }) as ExercisesInterface;
     if (!exercise) {
         throw new AppError("Exercise not found", 404);
     }
     await deleteOneFromTable({
         table: EXERCISES_TABLE,
-        filter: { id },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: id,
+        }],
     });
     return exercise;
 }
@@ -223,7 +255,7 @@ export const importExercisesForAdminService = async (data: { file: Express.Multe
 export const exportExercisesForAdminService = async () => {
     const exercises = await fetchManyFromTable({
         table: EXERCISES_TABLE,
-        filter: {},
+        where: [],
     }) as ExercisesInterface[];
     const dataToSend = [];
     // for (const exercise of exercises) {

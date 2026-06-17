@@ -5,7 +5,11 @@ CREATE TABLE IF NOT EXISTS user_weight_views (
         REFERENCES users(id),
 
     from_date DATE NOT NULL,
-    to_date DATE NOT NULL,
+
+    duration_type VARCHAR(255) NOT NULL,
+    CHECK (duration_type IN ('till-now', 'till-date')),
+    
+    to_date DATE,
 
     weight_entries JSONB,
 

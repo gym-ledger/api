@@ -30,6 +30,8 @@ export interface WorkoutProgramVersionsInterface {
 
     version_number: number;
 
+    version_name: string;
+
     training_days: number;
 
     split_type: string;

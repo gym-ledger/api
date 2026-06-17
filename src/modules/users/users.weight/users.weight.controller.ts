@@ -5,13 +5,20 @@ import {
     getUserWeightInViewService,
     createUserWeightEntryService,
     updateUserWeightEntryService,
-    importUserWeightEntriesService
+    importUserWeightEntriesService,
+    createUserWeightViewService,
+    getUserWeightViewsService,
+    deleteUserWeightEntryService,
+    getUserWeightEntriesService
 } from "./users.weight.service.js";
 
 export const getUserWeightViews = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // const user = req.user;
-        responseSend(res, 200, "User profile fetched successfully", req.user);
+        const userId = req.userId;
+        const data = await getUserWeightViewsService({
+            userId,
+        });
+        responseSend(res, 200, "User weight views fetched successfully", data);
     } catch (error) {
         next(error);
     }
@@ -20,9 +27,6 @@ export const getUserWeightViews = async (req: Request, res: Response, next: Next
 export const getUserWeightInView = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.userId;
-        if (!userId) {
-            throw new AppError("User not found", 404);
-        }
         const viewId = req.params.id as string | null;
         const date = req.query.date as string | null;
 
@@ -38,8 +42,9 @@ export const getUserWeightInView = async (req: Request, res: Response, next: Nex
 }
 export const createUserWeightView = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // const user = req.user;
-        responseSend(res, 200, "User profile fetched successfully", req.user);
+        const userId = req.userId;
+        const data = await createUserWeightViewService({ ...req.body, userId });
+        responseSend(res, 200, "User weight view created successfully", data);
     } catch (error) {
         next(error);
     }
@@ -47,9 +52,6 @@ export const createUserWeightView = async (req: Request, res: Response, next: Ne
 export const createUserWeightEntry = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const userId = req.userId;
-        if (!userId) {
-            throw new AppError("User not found", 404);
-        }
         const data = await createUserWeightEntryService({
             userId,
             weight: req.body.weight as number,
@@ -77,16 +79,26 @@ export const updateUserWeightEntry = async (req: Request, res: Response, next: N
 }
 export const deleteUserWeightEntry = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // const user = req.user;
-        responseSend(res, 200, "User profile fetched successfully", req.user);
+        const userId = req.userId;
+        const entryId = req.params.id as string | null;
+        const data = await deleteUserWeightEntryService({
+            userId,
+            entryId,
+        });
+        responseSend(res, 200, "User weight entry deleted successfully", data);
     } catch (error) {
         next(error);
     }
 }
 export const getUserWeightEntries = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // const user = req.user;
-        responseSend(res, 200, "User profile fetched successfully", req.user);
+        const userId = req.userId;
+        const lastEntryId = req.query.lastEntryId as string | null;
+        const data = await getUserWeightEntriesService({
+            userId,
+            lastEntryId,
+        });
+        responseSend(res, 200, "User weight entries fetched successfully", data);
     } catch (error) {
         next(error);
     }

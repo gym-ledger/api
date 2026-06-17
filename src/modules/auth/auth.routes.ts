@@ -12,5 +12,5 @@ const authRouter = Router();
 authRouter.post("/login/send-otp", asyncHandler(sendOtpForLogin));
 authRouter.post("/login/verify-otp", asyncHandler(verifyOtpForLogin));
 
-authRouter.put("/login/refresh-tokens", asyncHandler(refreshTokens));
+authRouter.put("/refresh-tokens", asyncHandler(refreshTokens));
 export default authRouter;

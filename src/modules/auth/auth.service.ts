@@ -21,11 +21,23 @@ const getOtpObj = async (method: string, phoneNumber: any, email: any) => {
         }
         return await fetchOneFromTable({
             table: OTP_AUTH_TABLE,
-            filter: {
-                method: "phone",
-                phone_country_code: phoneNumber?.code,
-                phone_number: phoneNumber?.number,
-            },
+            where: [
+                {
+                    field: "method",
+                    operator: "=",
+                    value: "phone",
+                },
+                {
+                    field: "phone_country_code",
+                    operator: "=",
+                    value: phoneNumber?.code,
+                },
+                {
+                    field: "phone_number",
+                    operator: "=",
+                    value: phoneNumber?.number,
+                },
+            ],
             useSoftDelete: false,
         }) as OtpAuthInterface;
     } else if (method === "email") {
@@ -34,10 +46,18 @@ const getOtpObj = async (method: string, phoneNumber: any, email: any) => {
         }
         return await fetchOneFromTable({
             table: OTP_AUTH_TABLE,
-            filter: {
-                method: "email",
-                email: email,
-            },
+            where: [
+                {
+                    field: "method",
+                    operator: "=",
+                    value: "email",
+                },
+                {
+                    field: "email",
+                    operator: "=",
+                    value: email,
+                },
+            ],
             useSoftDelete: false,
         }) as OtpAuthInterface;
     } else {
@@ -91,9 +111,11 @@ export const sendOtpForLoginService = async (data: any) => {
                 deleted_at: null,
                 generated_at: generated_at,
             },
-            filter: {
-                id: otpObj.id,
-            },
+            where: [{
+                field: "id",
+                operator: "=",
+                value: otpObj.id,
+            }],
         }) as OtpAuthInterface;
     }
     if (method === "phone") {
@@ -113,9 +135,13 @@ export const verifyOtpForLoginService = async (data: any) => {
     if (otpObj.attempts >= 3) {
         await deleteOneFromTable({
             table: OTP_AUTH_TABLE,
-            filter: {
-                id: otpObj.id,
-            },
+            where: [
+                {
+                    field: "id",
+                    operator: "=",
+                    value: otpObj.id,
+                },
+            ],
             useSoftDelete: false,
         });
         throw new AppError("Maximum attempts reached. Please try again later", 400);
@@ -125,9 +151,13 @@ export const verifyOtpForLoginService = async (data: any) => {
     if (otpObj.expires_at < new Date()) {
         await deleteOneFromTable({
             table: OTP_AUTH_TABLE,
-            filter: {
-                id: otpObj.id,
-            },
+            where: [
+                {
+                    field: "id",
+                    operator: "=",
+                    value: otpObj.id,
+                },
+            ],
             useSoftDelete: false,
         });
         throw new AppError("OTP expired. Please try again", 400);
@@ -138,9 +168,13 @@ export const verifyOtpForLoginService = async (data: any) => {
         if (otpObj.attempts >= 2) {
             await deleteOneFromTable({
                 table: OTP_AUTH_TABLE,
-                filter: {
-                    id: otpObj.id,
-                },
+                where: [
+                    {
+                        field: "id",
+                        operator: "=",
+                        value: otpObj.id,
+                    },
+                ],
                 useSoftDelete: false,
             });
             throw new AppError("Invalid OTP 3 times. Please send a new OTP", 400);
@@ -150,9 +184,11 @@ export const verifyOtpForLoginService = async (data: any) => {
                 data: {
                     attempts: otpObj.attempts + 1,
                 },
-                filter: {
-                    id: otpObj.id,
-                },
+                where: [{
+                    field: "id",
+                    operator: "=",
+                    value: otpObj.id,
+                }],
             });
             throw new AppError("Invalid OTP. Please try again", 400);
         }
@@ -160,9 +196,13 @@ export const verifyOtpForLoginService = async (data: any) => {
     console.log('correct otp')
     await deleteOneFromTable({
         table: OTP_AUTH_TABLE,
-        filter: {
-            id: otpObj.id,
-        },
+        where: [
+            {
+                field: "id",
+                operator: "=",
+                value: otpObj.id,
+            },
+        ],
         useSoftDelete: false,
     });
     // fetch user by phone number or email
@@ -170,17 +210,29 @@ export const verifyOtpForLoginService = async (data: any) => {
     if (method === "phone") {
         userObj = await fetchOneFromTable({
             table: USERS_TABLE,
-            filter: {
-                phone_number: phoneNumber,
-                phone_country_code: phoneNumber?.code,
-            },
+            where: [
+                {
+                    field: "phone_number",
+                    operator: "=",
+                    value: phoneNumber,
+                },
+                {
+                    field: "phone_country_code",
+                    operator: "=",
+                    value: phoneNumber?.code,
+                },
+            ],
         }) as UsersInterface;
     } else if (method === "email") {
         userObj = await fetchOneFromTable({
             table: USERS_TABLE,
-            filter: {
-                email: email,
-            },
+            where: [
+                {
+                    field: "email",
+                    operator: "=",
+                    value: email,
+                },
+            ],
         }) as UsersInterface;
     } else {
         throw new AppError("Invalid method", 400);
@@ -222,9 +274,13 @@ export const refreshTokensService = async (refreshToken: string) => {
     }
     const sessionObj = await fetchOneFromTable({
         table: USER_SESSIONS_TABLE,
-        filter: {
-            refresh_token_hash: hashToken(refreshToken),
-        },
+        where: [
+            {
+                field: "refresh_token_hash",
+                operator: "=",
+                value: hashToken(refreshToken),
+            },
+        ],
         useSoftDelete: false,
     }) as UserSessionsInterface;
     if (!sessionObj) {
@@ -236,9 +292,13 @@ export const refreshTokensService = async (refreshToken: string) => {
     if (sessionObj.revoked_at) {
         await deleteOneFromTable({
             table: USER_SESSIONS_TABLE,
-            filter: {
-                id: sessionObj.id,
-            },
+            where: [
+                {
+                    field: "id",
+                    operator: "=",
+                    value: sessionObj.id,
+                },
+            ],
             useSoftDelete: false,
         });
         throw new AppError("Refresh token revoked", 401);
@@ -256,9 +316,11 @@ export const refreshTokensService = async (refreshToken: string) => {
             expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
             last_used_at: new Date(),
         },
-        filter: {
-            id: sessionObj.id,
-        },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: sessionObj.id,
+        }],
     });
     return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken };
 }
