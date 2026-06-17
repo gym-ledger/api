@@ -6,6 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "migrate": "tsx src/scripts/run-migrations.ts",
+    "seed:admin": "tsx src/scripts/seed-admin.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
