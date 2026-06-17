@@ -1,17 +1,25 @@
 import { pg } from "../../infrastructure/postgres/index.js";
 
 export const allowedTables = [
-    "exercises",
     "admin_users",
-    "admin_sessions",
+    "exercises",
     "otp_auth",
-    "users",
+    "program_day_sessions",
+    "program_days",
+    "progression_rules",
+    "schema_migrations",
+    "user_health_preferences",
+    "user_program_assignments",
+    "user_sessions",
     "user_weight_entries",
     "user_weight_moving_averages",
     "user_weight_views",
+    "users",
+    "workout_program_exercises",
+    "workout_program_versions",
     "workout_programs",
-    "workout_program_days",
-    "workout_program_day_exercises"
+    "workout_sessions",
+    "workout_sets",
 ];
 export type IFilter = Record<
     string,
