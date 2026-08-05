@@ -27,7 +27,7 @@ export const refreshAdminTokens = async (req: Request, res: Response, next: Next
             path: "/",
         });
 
-        return responseSend(res, 200, "Tokens refreshed successfully", { accessToken: data.accessToken });
+        return responseSend(res, 200, "Tokens refreshed successfully", { accessToken: data.accessToken, refreshToken: data.refreshToken });
     } catch (error) {
         next(error);
     }

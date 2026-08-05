@@ -1,6 +1,18 @@
 import { Router } from "express";
 import multer from "multer";
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
+
+import {
+    listMusclesForAdmin,
+    viewMuscleForAdmin,
+    createMuscleForAdmin,
+    updateMuscleForAdmin,
+    deleteMuscleForAdmin,
+    getMusclesDropdownForAdmin,
+    importMusclesForAdmin,
+    exportMusclesForAdmin,
+} from './admin.crud.muscles/adminCrudMuscles.controller.js';
+
 import {
     listWorkoutProgramsForAdmin,
     viewWorkoutProgramForAdmin,
@@ -33,6 +45,16 @@ const upload = multer({
 });
 
 const adminCrudRouter = Router();
+
+// muscles
+adminCrudRouter.get("/muscles/list", asyncHandler(listMusclesForAdmin));
+adminCrudRouter.get("/muscles/view/:id", asyncHandler(viewMuscleForAdmin));
+adminCrudRouter.post("/muscles/create", asyncHandler(createMuscleForAdmin));
+adminCrudRouter.put("/muscles/update/:id", asyncHandler(updateMuscleForAdmin));
+adminCrudRouter.delete("/muscles/delete/:id", asyncHandler(deleteMuscleForAdmin));
+adminCrudRouter.get("/muscles/dropdown", asyncHandler(getMusclesDropdownForAdmin));
+adminCrudRouter.post("/muscles/import", upload.single("file"), asyncHandler(importMusclesForAdmin));
+adminCrudRouter.get("/muscles/export", asyncHandler(exportMusclesForAdmin));
 
 // exercises
 adminCrudRouter.get("/exercises/list", asyncHandler(listExercisesForAdmin));

@@ -7,7 +7,7 @@ export const allowedTables = [
     "program_day_sessions",
     "program_days",
     "progression_rules",
-    "schema_migrations",
+    // "schema_migrations",
     "user_health_preferences",
     "user_program_assignments",
     "user_sessions",
@@ -20,6 +20,8 @@ export const allowedTables = [
     "workout_programs",
     "workout_sessions",
     "workout_sets",
+    "muscles",
+    "exercise_muscles",
 ];
 export type IFilter = Record<
     string,
