@@ -161,6 +161,8 @@ export interface ExerciseHistorySetRow {
     effort: string | null;
     discomfort_notes: string | null;
     alarm_message: string | null;
+    parent_set_id: string | null;
+    drop_order: number | null;
 }
 
 export interface ExerciseHistorySessionRow {
@@ -222,7 +224,9 @@ export const fetchExerciseHistoryRepository = async (data: {
         ws.rir,
         ws.effort,
         ws.discomfort_notes,
-        wsa.message AS alarm_message
+        wsa.message AS alarm_message,
+        ws.parent_set_id,
+        ws.drop_order
     FROM matching_sessions ms
     INNER JOIN workout_sets ws ON ws.workout_session_id = ms.workout_session_id
     INNER JOIN workout_program_exercises wpe
@@ -236,7 +240,7 @@ export const fetchExerciseHistoryRepository = async (data: {
     INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
     LEFT JOIN workout_set_alarms wsa ON wsa.workout_set_id = ws.id
     WHERE ws.deleted_at IS NULL
-    ORDER BY ms.started_at DESC, ws.set_order ASC
+    ORDER BY ms.started_at DESC, ws.set_order ASC, ws.drop_order ASC NULLS FIRST
     `;
     try {
         const result = await pg.query(query, params);
@@ -264,6 +268,8 @@ export const fetchExerciseHistoryRepository = async (data: {
                 effort: row.effort,
                 discomfort_notes: row.discomfort_notes,
                 alarm_message: row.alarm_message,
+                parent_set_id: row.parent_set_id,
+                drop_order: row.drop_order,
             });
         }
         return Array.from(sessionsById.values());
@@ -366,6 +372,8 @@ export interface WorkoutSessionDetailSetRow {
     effort: string | null;
     discomfort_notes: string | null;
     created_at: Date;
+    parent_set_id: string | null;
+    drop_order: number | null;
 }
 
 export interface WorkoutSessionDetailExerciseRow {
@@ -412,6 +420,8 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
         ws.effort,
         ws.discomfort_notes,
         ws.created_at,
+        ws.parent_set_id,
+        ws.drop_order,
         wpe.id AS workout_program_exercise_id,
         wpe.exercise_order,
         e.id AS exercise_id,
@@ -424,7 +434,7 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
     INNER JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
     INNER JOIN program_days pd ON pd.id = pds.workout_program_day_id
     WHERE ws.workout_session_id = $1 AND ws.deleted_at IS NULL
-    ORDER BY wpe.exercise_order ASC, ws.set_order ASC
+    ORDER BY wpe.exercise_order ASC, ws.set_order ASC, ws.drop_order ASC NULLS FIRST
     `;
     try {
         const [sessionResult, setsResult] = await Promise.all([
@@ -464,6 +474,8 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
                 effort: row.effort,
                 discomfort_notes: row.discomfort_notes,
                 created_at: row.created_at,
+                parent_set_id: row.parent_set_id,
+                drop_order: row.drop_order,
             });
         }
 

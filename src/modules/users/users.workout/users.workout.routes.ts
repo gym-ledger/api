@@ -14,6 +14,7 @@ import {
     getSessionSets,
     finishWorkoutSession,
     createWorkoutSet,
+    createWorkoutSetsBatch,
     getExerciseHistory,
     listWorkoutSessions,
     getWorkoutSessionDetail,
@@ -42,6 +43,7 @@ usersWorkoutRouter.post("/sessions/:sessionId/finish", verifyUserToken, asyncHan
 
 // Set logging
 usersWorkoutRouter.post("/sets", verifyUserToken, asyncHandler(createWorkoutSet));
+usersWorkoutRouter.post("/sets/batch", verifyUserToken, asyncHandler(createWorkoutSetsBatch));
 
 // Exercise history
 usersWorkoutRouter.get("/exercises/:exerciseId/history", verifyUserToken, asyncHandler(getExerciseHistory));

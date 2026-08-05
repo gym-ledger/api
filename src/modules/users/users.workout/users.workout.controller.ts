@@ -13,6 +13,7 @@ import {
     getSessionSetsService,
     finishWorkoutSessionService,
     createWorkoutSetService,
+    createWorkoutSetsBatchService,
     getExerciseHistoryService,
     listWorkoutSessionsService,
     getWorkoutSessionDetailService,
@@ -165,8 +166,21 @@ export const createWorkoutSet = async (req: Request, res: Response, next: NextFu
             effort: req.body.effort,
             discomfort_notes: req.body.discomfort_notes,
             alarm_message: req.body.alarm_message,
+            drop_sets: req.body.drop_sets,
         });
         return responseSend(res, 200, "Set logged successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const createWorkoutSetsBatch = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await createWorkoutSetsBatchService({
+            userId: req.userId,
+            sets: req.body.sets,
+        });
+        return responseSend(res, 200, "Sets synced successfully", data);
     } catch (error) {
         next(error);
     }

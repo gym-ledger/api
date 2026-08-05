@@ -386,6 +386,108 @@ export const finishWorkoutSessionService = async (data: {
 // Set logging
 // ---------------------------------------------------------------------------
 
+export interface DropSetInput {
+    weight?: number | null;
+    tool_weight?: number | null;
+    reps?: number | null;
+    rir?: number | null;
+    effort?: string | null;
+    discomfort_notes?: string | null;
+}
+
+const MAX_DROP_SETS = 10;
+
+const validateSetFields = (fields: {
+    weight?: number | null,
+    tool_weight?: number | null,
+    reps?: number | null,
+}, label: string) => {
+    const { weight, tool_weight, reps } = fields;
+    if (reps == null || reps <= 0) {
+        throw new AppError(`Reps is required${label}`, 400);
+    }
+    if (weight != null && weight < 0) {
+        throw new AppError(`Weight cannot be negative${label}`, 400);
+    }
+    if (tool_weight != null && tool_weight < 0) {
+        throw new AppError(`Tool weight cannot be negative${label}`, 400);
+    }
+}
+
+/**
+ * Inserts one "main" set row plus, if given, its dropset children
+ * (`parent_set_id`/`drop_order` on each). `setOrder` is passed in rather than
+ * computed here so callers (single-create vs. batch-create) can control how
+ * it's resolved — batch inserts for the same exercise must share an
+ * in-memory running counter instead of each re-querying the DB.
+ */
+const insertSetWithDropsets = async (params: {
+    workout_session_id: string,
+    workout_program_exercise_id: string,
+    setOrder: number,
+    weight?: number | null,
+    tool_weight?: number | null,
+    reps?: number | null,
+    rir?: number | null,
+    effort?: string | null,
+    discomfort_notes?: string | null,
+    drop_sets?: DropSetInput[] | null,
+}): Promise<{ set: WorkoutSetsInterface, dropSets: WorkoutSetsInterface[] }> => {
+    const {
+        workout_session_id,
+        workout_program_exercise_id,
+        setOrder,
+        weight,
+        tool_weight,
+        reps,
+        rir,
+        effort,
+        discomfort_notes,
+        drop_sets,
+    } = params;
+
+    const set = await addOneInTable({
+        table: WORKOUT_SETS_TABLE,
+        data: {
+            workout_session_id,
+            workout_program_exercise_id,
+            set_order: setOrder,
+            weight: weight ?? null,
+            tool_weight: tool_weight ?? null,
+            reps: reps ?? null,
+            rir: rir ?? null,
+            effort: effort || null,
+            discomfort_notes: discomfort_notes || null,
+        },
+    }) as WorkoutSetsInterface;
+
+    const dropSets: WorkoutSetsInterface[] = [];
+    if (drop_sets && drop_sets.length > 0) {
+        for (let i = 0; i < drop_sets.length; i++) {
+            const drop = drop_sets[i];
+            const dropRow = await addOneInTable({
+                table: WORKOUT_SETS_TABLE,
+                data: {
+                    workout_session_id,
+                    workout_program_exercise_id,
+                    set_order: setOrder,
+                    parent_set_id: set.id,
+                    drop_order: i + 1,
+                    weight: drop.weight ?? null,
+                    tool_weight: drop.tool_weight ?? null,
+                    reps: drop.reps ?? null,
+                    rir: drop.rir ?? null,
+                    effort: drop.effort || null,
+                    discomfort_notes: drop.discomfort_notes || null,
+                },
+            }) as WorkoutSetsInterface;
+            dropSets.push(dropRow);
+        }
+    }
+
+    return { set, dropSets };
+}
+
 export const createWorkoutSetService = async (data: {
     userId?: string,
     workout_session_id?: string,
@@ -397,6 +499,7 @@ export const createWorkoutSetService = async (data: {
     effort?: string | null,
     discomfort_notes?: string | null,
     alarm_message?: string | null,
+    drop_sets?: DropSetInput[] | null,
 }) => {
     const {
         userId,
@@ -409,6 +512,7 @@ export const createWorkoutSetService = async (data: {
         effort,
         discomfort_notes,
         alarm_message,
+        drop_sets,
     } = data;
     if (!userId) {
         throw new AppError("User ID is required", 400);
@@ -422,14 +526,12 @@ export const createWorkoutSetService = async (data: {
     if (!isValidUUID(workout_program_exercise_id)) {
         throw new AppError("Invalid workout_program_exercise_id", 400);
     }
-    if (reps == null || reps <= 0) {
-        throw new AppError("Reps is required", 400);
+    validateSetFields({ weight, tool_weight, reps }, "");
+    if (drop_sets && drop_sets.length > MAX_DROP_SETS) {
+        throw new AppError(`A set can have at most ${MAX_DROP_SETS} drop sets`, 400);
     }
-    if (weight != null && weight < 0) {
-        throw new AppError("Weight cannot be negative", 400);
-    }
-    if (tool_weight != null && tool_weight < 0) {
-        throw new AppError("Tool weight cannot be negative", 400);
+    for (const drop of drop_sets ?? []) {
+        validateSetFields(drop, " for drop set");
     }
 
     const session = await getOwnedWorkoutSessionOrThrow(userId, workout_session_id);
@@ -442,29 +544,30 @@ export const createWorkoutSetService = async (data: {
         throw new AppError("Exercise not found in plan", 404);
     }
 
-    const existingSets = await fetchManyFromTable({
+    // Only main sets (parent_set_id IS NULL) count toward "Set N" numbering —
+    // dropset children share their parent's set_order, not their own slot.
+    const existingMainSets = await fetchManyFromTable({
         table: WORKOUT_SETS_TABLE,
         where: [
             { field: "workout_session_id", operator: "=", value: session.id },
             { field: "workout_program_exercise_id", operator: "=", value: workout_program_exercise_id },
+            { field: "parent_set_id", operator: "IS NULL" },
         ],
     }) as WorkoutSetsInterface[];
-    const setOrder = existingSets.length + 1;
+    const setOrder = existingMainSets.length + 1;
 
-    const set = await addOneInTable({
-        table: WORKOUT_SETS_TABLE,
-        data: {
-            workout_session_id: session.id,
-            workout_program_exercise_id,
-            set_order: setOrder,
-            weight: weight ?? null,
-            tool_weight: tool_weight ?? null,
-            reps: reps ?? null,
-            rir: rir ?? null,
-            effort: effort || null,
-            discomfort_notes: discomfort_notes || null,
-        },
-    }) as WorkoutSetsInterface;
+    const { set, dropSets } = await insertSetWithDropsets({
+        workout_session_id: session.id,
+        workout_program_exercise_id,
+        setOrder,
+        weight,
+        tool_weight,
+        reps,
+        rir,
+        effort,
+        discomfort_notes,
+        drop_sets,
+    });
 
     let alarm: WorkoutSetAlarmsInterface | null = null;
     if (alarm_message && alarm_message.trim()) {
@@ -482,7 +585,165 @@ export const createWorkoutSetService = async (data: {
         }) as WorkoutSetAlarmsInterface;
     }
 
-    return { set, alarm };
+    return { set, dropSets, alarm };
+}
+
+// ---------------------------------------------------------------------------
+// Batch set logging (offline-sync flush)
+// ---------------------------------------------------------------------------
+
+export interface BatchSetInput {
+    client_id?: string,
+    workout_session_id?: string,
+    workout_program_exercise_id?: string,
+    weight?: number | null,
+    tool_weight?: number | null,
+    reps?: number | null,
+    rir?: number | null,
+    effort?: string | null,
+    discomfort_notes?: string | null,
+    alarm_message?: string | null,
+    drop_sets?: DropSetInput[] | null,
+}
+
+export type BatchSetResult =
+    | { client_id: string, set: WorkoutSetsInterface, dropSets: WorkoutSetsInterface[], alarm: WorkoutSetAlarmsInterface | null }
+    | { client_id: string, error: string };
+
+/**
+ * Flushes a batch of queued (offline-logged) sets in one call. Items may
+ * span multiple exercises/sessions; each is validated and inserted
+ * independently so one bad item doesn't fail the whole batch. `set_order` is
+ * seeded once per (session, exercise) group from the DB and then tracked
+ * in-memory across the batch, since sibling items in the same flush haven't
+ * been persisted yet and can't each ask the DB "what's next".
+ */
+export const createWorkoutSetsBatchService = async (data: {
+    userId?: string,
+    sets?: BatchSetInput[],
+}): Promise<{ results: BatchSetResult[] }> => {
+    const { userId, sets } = data;
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    if (!sets || sets.length === 0) {
+        throw new AppError("sets is required", 400);
+    }
+
+    const sessionCache = new Map<string, WorkoutSessionsInterface>();
+    const programExerciseCache = new Map<string, WorkoutProgramExercisesInterface>();
+    const nextSetOrderByGroup = new Map<string, number>();
+
+    const results: BatchSetResult[] = [];
+
+    for (const item of sets) {
+        const {
+            client_id,
+            workout_session_id,
+            workout_program_exercise_id,
+            weight,
+            tool_weight,
+            reps,
+            rir,
+            effort,
+            discomfort_notes,
+            alarm_message,
+            drop_sets,
+        } = item;
+
+        if (!client_id) {
+            // Can't report a per-item failure without a client_id to key it by.
+            continue;
+        }
+
+        try {
+            if (!workout_session_id) {
+                throw new AppError("workout_session_id is required", 400);
+            }
+            if (!workout_program_exercise_id || !isValidUUID(workout_program_exercise_id)) {
+                throw new AppError("Invalid workout_program_exercise_id", 400);
+            }
+            validateSetFields({ weight, tool_weight, reps }, "");
+            if (drop_sets && drop_sets.length > MAX_DROP_SETS) {
+                throw new AppError(`A set can have at most ${MAX_DROP_SETS} drop sets`, 400);
+            }
+            for (const drop of drop_sets ?? []) {
+                validateSetFields(drop, " for drop set");
+            }
+
+            let session = sessionCache.get(workout_session_id);
+            if (!session) {
+                session = await getOwnedWorkoutSessionOrThrow(userId, workout_session_id);
+                sessionCache.set(workout_session_id, session);
+            }
+
+            let programExercise = programExerciseCache.get(workout_program_exercise_id);
+            if (!programExercise) {
+                const found = await fetchOneFromTable({
+                    table: WORKOUT_PROGRAM_EXERCISES_TABLE,
+                    where: [{ field: "id", operator: "=", value: workout_program_exercise_id }],
+                }) as WorkoutProgramExercisesInterface | null;
+                if (!found) {
+                    throw new AppError("Exercise not found in plan", 404);
+                }
+                programExercise = found;
+                programExerciseCache.set(workout_program_exercise_id, programExercise);
+            }
+
+            const groupKey = `${session.id}::${workout_program_exercise_id}`;
+            let setOrder = nextSetOrderByGroup.get(groupKey);
+            if (setOrder == null) {
+                const existingMainSets = await fetchManyFromTable({
+                    table: WORKOUT_SETS_TABLE,
+                    where: [
+                        { field: "workout_session_id", operator: "=", value: session.id },
+                        { field: "workout_program_exercise_id", operator: "=", value: workout_program_exercise_id },
+                        { field: "parent_set_id", operator: "IS NULL" },
+                    ],
+                }) as WorkoutSetsInterface[];
+                setOrder = existingMainSets.length + 1;
+            }
+            nextSetOrderByGroup.set(groupKey, setOrder + 1);
+
+            const { set, dropSets } = await insertSetWithDropsets({
+                workout_session_id: session.id,
+                workout_program_exercise_id,
+                setOrder,
+                weight,
+                tool_weight,
+                reps,
+                rir,
+                effort,
+                discomfort_notes,
+                drop_sets,
+            });
+
+            let alarm: WorkoutSetAlarmsInterface | null = null;
+            if (alarm_message && alarm_message.trim()) {
+                if (!programExercise.exercise_id) {
+                    throw new AppError("Cannot raise an alarm for this plan entry", 400);
+                }
+                alarm = await addOneInTable({
+                    table: WORKOUT_SET_ALARMS_TABLE,
+                    data: {
+                        user_id: userId,
+                        workout_set_id: set.id,
+                        exercise_id: programExercise.exercise_id,
+                        message: alarm_message.trim(),
+                    },
+                }) as WorkoutSetAlarmsInterface;
+            }
+
+            results.push({ client_id, set, dropSets, alarm });
+        } catch (error) {
+            results.push({
+                client_id,
+                error: error instanceof AppError ? error.message : "Failed to log set",
+            });
+        }
+    }
+
+    return { results };
 }
 
 // ---------------------------------------------------------------------------

@@ -12,6 +12,8 @@ export interface WorkoutSetsInterface {
     is_warmup: boolean;
     effort: string | null;
     discomfort_notes: string | null;
+    parent_set_id: string | null;
+    drop_order: number | null;
     deleted_at: Date | null;
     created_at: Date;
     updated_at: Date;
