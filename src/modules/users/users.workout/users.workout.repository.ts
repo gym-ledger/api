@@ -362,6 +362,60 @@ export const fetchWorkoutSessionsRepository = async (data: {
     }
 }
 
+export interface OngoingWorkoutSessionRow {
+    session_id: string;
+    started_at: Date;
+    assignment_id: string;
+    program_day_id: string | null;
+    program_day_session_id: string | null;
+    program_name: string;
+    day_name: string | null;
+    session_name: string | null;
+}
+
+/**
+ * The user's single in-progress (unfinished) workout session, if any, along
+ * with the day/session it was started under — read off
+ * `user_program_assignments.current_program_day_id/_session_id`, which
+ * `startWorkoutSessionService` stamps at start time, rather than derived
+ * from logged sets (there may be none yet if the user backgrounded the app
+ * immediately after starting).
+ */
+export const fetchOngoingWorkoutSessionRepository = async (
+    userId: string,
+): Promise<OngoingWorkoutSessionRow | null> => {
+    const query = `
+    SELECT
+        wsess.id AS session_id,
+        wsess.started_at,
+        wsess.program_assignment_id AS assignment_id,
+        upa.current_program_day_id AS program_day_id,
+        upa.current_program_day_session_id AS program_day_session_id,
+        wp.name AS program_name,
+        pd.name AS day_name,
+        pds.name AS session_name
+    FROM workout_sessions wsess
+    INNER JOIN user_program_assignments upa ON upa.id = wsess.program_assignment_id
+    INNER JOIN workout_program_versions wpv ON wpv.id = upa.workout_program_version_id
+    INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
+    LEFT JOIN program_days pd ON pd.id = upa.current_program_day_id
+    LEFT JOIN program_day_sessions pds ON pds.id = upa.current_program_day_session_id
+    WHERE wsess.user_id = $1
+        AND wsess.completed_at IS NULL
+        AND wsess.deleted_at IS NULL
+    ORDER BY wsess.started_at DESC
+    LIMIT 1
+    `;
+    try {
+        const result = await pg.query(query, [userId]);
+        return result.rows[0] ?? null;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch ongoing workout session", 500);
+    }
+}
+
 export interface WorkoutSessionDetailSetRow {
     id: string;
     set_order: number;

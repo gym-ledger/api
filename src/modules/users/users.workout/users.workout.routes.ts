@@ -13,6 +13,7 @@ import {
     startWorkoutSession,
     getSessionSets,
     finishWorkoutSession,
+    getOngoingWorkoutSession,
     createWorkoutSet,
     createWorkoutSetsBatch,
     getExerciseHistory,
@@ -38,6 +39,7 @@ usersWorkoutRouter.get("/assignments/:assignmentId/days/:dayId/sessions/:session
 
 // Session lifecycle
 usersWorkoutRouter.post("/sessions/start", verifyUserToken, asyncHandler(startWorkoutSession));
+usersWorkoutRouter.get("/sessions/ongoing", verifyUserToken, asyncHandler(getOngoingWorkoutSession));
 usersWorkoutRouter.get("/sessions/:sessionId/sets", verifyUserToken, asyncHandler(getSessionSets));
 usersWorkoutRouter.post("/sessions/:sessionId/finish", verifyUserToken, asyncHandler(finishWorkoutSession));
 

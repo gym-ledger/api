@@ -12,6 +12,7 @@ import {
     startWorkoutSessionService,
     getSessionSetsService,
     finishWorkoutSessionService,
+    getOngoingWorkoutSessionService,
     createWorkoutSetService,
     createWorkoutSetsBatchService,
     getExerciseHistoryService,
@@ -147,6 +148,15 @@ export const finishWorkoutSession = async (req: Request, res: Response, next: Ne
             sessionId: req.params.sessionId as string,
         });
         return responseSend(res, 200, "Workout session finished successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getOngoingWorkoutSession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getOngoingWorkoutSessionService(req.userId);
+        return responseSend(res, 200, "Ongoing workout session fetched successfully", data);
     } catch (error) {
         next(error);
     }

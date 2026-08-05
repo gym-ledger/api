@@ -17,6 +17,7 @@ import {
     fetchUserAssignmentsRepository,
     fetchWorkoutSessionsRepository,
     fetchWorkoutSessionDetailRepository,
+    fetchOngoingWorkoutSessionRepository,
 } from "./users.workout.repository.js";
 
 // ---------------------------------------------------------------------------
@@ -380,6 +381,13 @@ export const finishWorkoutSessionService = async (data: {
         data: { completed_at: new Date() },
         where: [{ field: "id", operator: "=", value: session.id }],
     }) as WorkoutSessionsInterface;
+}
+
+export const getOngoingWorkoutSessionService = async (userId?: string) => {
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    return await fetchOngoingWorkoutSessionRepository(userId);
 }
 
 // ---------------------------------------------------------------------------
