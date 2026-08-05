@@ -12,8 +12,40 @@ import { ProgramDaysInterface } from "../../../../db/schemas/workoutPrograms/pro
 import { parseCsv } from "../../../../utils/csv.js";
 import { FetchPaginatedResultsFromTableParams } from "../../../index/index.repository.js";
 import { EXERCISE_MUSCLES_TABLE, ExerciseMusclesInterface } from "../../../../db/schemas/muscles/exerciseMuscles.schema.js";
-import { fetchExerciseWithMusclesByIdRepository } from "./adminCrudExercises.repository.js";
+import { fetchExerciseWithMusclesByIdRepository, fetchExercisesForExportRepository } from "./adminCrudExercises.repository.js";
 import { MUSCLES_TABLE, MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
+
+const parseAndValidateExerciseMuscles = (exerciseMuscles: string): { muscle_id: string, contribution: number }[] => {
+    let parsed: { muscle_id: string, contribution: number }[];
+    try {
+        parsed = JSON.parse(exerciseMuscles);
+    } catch {
+        throw new AppError("exerciseMuscles must be valid JSON", 400);
+    }
+    if (!Array.isArray(parsed)) {
+        throw new AppError("exerciseMuscles must be an array", 400);
+    }
+    const seen = new Set<string>();
+    for (const entry of parsed) {
+        if (!entry.muscle_id) {
+            throw new AppError("Muscle id is required", 400);
+        }
+        if (!isValidUUID(entry.muscle_id)) {
+            throw new AppError("Invalid muscle id", 400);
+        }
+        if (!entry.contribution) {
+            throw new AppError("Contribution is required", 400);
+        }
+        if (entry.contribution <= 0 || entry.contribution > 1) {
+            throw new AppError("Contribution must be between 0 and 1", 400);
+        }
+        if (seen.has(entry.muscle_id)) {
+            throw new AppError("Duplicate muscle selected", 400);
+        }
+        seen.add(entry.muscle_id);
+    }
+    return parsed;
+}
 
 // exercises
 export const listExercisesForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
@@ -32,10 +64,17 @@ export const listExercisesForAdminService = async (data: { page?: number, limit?
             },
         ],
 
+        extraSelects: [`(
+            SELECT COUNT(*)
+            FROM exercise_muscles em
+            WHERE em.exercise_id = exercises.id
+            AND em.deleted_at IS NULL
+        ) AS muscle_count`],
+
         limit,
         page,
     }) as {
-        data: ExercisesInterface[];
+        data: (ExercisesInterface & { muscle_count: string })[];
         meta: {
             page: number;
             limit: number;
@@ -72,10 +111,9 @@ export const createExerciseForAdminService = async (data: {
 }) => {
     const { name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles } = data;
 
-    let parsedExerciseMuscles: { muscle_id: string, contribution: number }[] = [];
-    if (exerciseMuscles) {
-        parsedExerciseMuscles = JSON.parse(exerciseMuscles);
-    }
+    const parsedExerciseMuscles = exerciseMuscles
+        ? parseAndValidateExerciseMuscles(exerciseMuscles)
+        : [];
     if (!name) {
         throw new AppError("Name is required", 400);
     }
@@ -102,18 +140,6 @@ export const createExerciseForAdminService = async (data: {
     }) as ExercisesInterface;
 
     await Promise.all(parsedExerciseMuscles.map(async (exerciseMuscle) => {
-        if (!exerciseMuscle.muscle_id) {
-            throw new AppError("Muscle id is required", 400);
-        }
-        if (!exerciseMuscle.contribution) {
-            throw new AppError("Contribution is required", 400);
-        }
-        if (exerciseMuscle.contribution <= 0 || exerciseMuscle.contribution > 1) {
-            throw new AppError("Contribution must be between 0 and 1", 400);
-        }
-        if (!isValidUUID(exerciseMuscle.muscle_id)) {
-            throw new AppError("Invalid muscle id", 400);
-        }
         const muscle = await fetchOneFromTable({
             table: MUSCLES_TABLE,
             where: [{
@@ -143,11 +169,6 @@ export const updateExerciseForAdminService = async (data: {
     file?: Express.Multer.File
 }) => {
     const { id, name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles } = data;
-
-    let parsedExerciseMuscles: { muscle_id: string, contribution: number }[] = [];
-    if (exerciseMuscles) {
-        parsedExerciseMuscles = JSON.parse(exerciseMuscles);
-    }
 
     if (!id) {
         throw new AppError("Exercise id is required", 400);
@@ -210,59 +231,59 @@ export const updateExerciseForAdminService = async (data: {
     }) as ExercisesInterface;
 
 
-    await Promise.all(parsedExerciseMuscles.map(async (exerciseMuscle) => {
-        if (!exerciseMuscle.muscle_id) {
-            throw new AppError("Muscle id is required", 400);
-        }
-        if (!exerciseMuscle.contribution) {
-            throw new AppError("Contribution is required", 400);
-        }
-        if (exerciseMuscle.contribution <= 0 || exerciseMuscle.contribution > 1) {
-            throw new AppError("Contribution must be between 0 and 1", 400);
-        }
-        if (!isValidUUID(exerciseMuscle.muscle_id)) {
-            throw new AppError("Invalid muscle id", 400);
-        }
-        const muscle = await fetchOneFromTable({
-            table: MUSCLES_TABLE,
-            where: [{
-                field: "id",
-                operator: "=",
-                value: exerciseMuscle.muscle_id,
-            }],
-        }) as MusclesInterface;
-        if (!muscle) {
-            throw new AppError("Muscle not found", 404);
-        }
-        const exists = await fetchOneFromTable({
+    // `exerciseMuscles` omitted entirely => leave existing muscle links untouched
+    // (e.g. the CSV import flow updates exercise fields and syncs muscles separately).
+    // `exerciseMuscles` provided => treated as the full desired state: anything
+    // linked but not in the list gets removed, the rest is upserted.
+    if (exerciseMuscles !== undefined) {
+        const parsedExerciseMuscles = parseAndValidateExerciseMuscles(exerciseMuscles);
+
+        const existingLinks = await fetchManyFromTable({
             table: EXERCISE_MUSCLES_TABLE,
-            where: [{
-                field: "exercise_id",
-                operator: "=",
-                value: exercise.id,
-            }, {
-                field: "muscle_id",
-                operator: "=",
-                value: exerciseMuscle.muscle_id,
-            }],
-        }) as ExerciseMusclesInterface;
-        if (exists) {
-            await updateOneInTable({
+            where: [{ field: "exercise_id", operator: "=", value: id }],
+        }) as ExerciseMusclesInterface[];
+
+        const incomingMuscleIds = new Set(parsedExerciseMuscles.map((m) => m.muscle_id));
+        const linksToRemove = existingLinks.filter((link) => !incomingMuscleIds.has(link.muscle_id));
+
+        if (linksToRemove.length > 0) {
+            await deleteManyInTable({
                 table: EXERCISE_MUSCLES_TABLE,
-                data: { contribution: exerciseMuscle.contribution },
+                where: [{ field: "id", operator: "IN", value: linksToRemove.map((link) => link.id) }],
+            });
+        }
+
+        await Promise.all(parsedExerciseMuscles.map(async (exerciseMuscle) => {
+            const muscle = await fetchOneFromTable({
+                table: MUSCLES_TABLE,
                 where: [{
                     field: "id",
                     operator: "=",
-                    value: exists.id,
+                    value: exerciseMuscle.muscle_id,
                 }],
-            });
-        } else {
-            await addOneInTable({
-                table: EXERCISE_MUSCLES_TABLE,
-                data: { exercise_id: exercise.id, muscle_id: exerciseMuscle.muscle_id, contribution: exerciseMuscle.contribution },
-            });
-        }
-    }));
+            }) as MusclesInterface;
+            if (!muscle) {
+                throw new AppError("Muscle not found", 404);
+            }
+            const existingLink = existingLinks.find((link) => link.muscle_id === exerciseMuscle.muscle_id);
+            if (existingLink) {
+                await updateOneInTable({
+                    table: EXERCISE_MUSCLES_TABLE,
+                    data: { contribution: exerciseMuscle.contribution },
+                    where: [{
+                        field: "id",
+                        operator: "=",
+                        value: existingLink.id,
+                    }],
+                });
+            } else {
+                await addOneInTable({
+                    table: EXERCISE_MUSCLES_TABLE,
+                    data: { exercise_id: id, muscle_id: exerciseMuscle.muscle_id, contribution: exerciseMuscle.contribution },
+                });
+            }
+        }));
+    }
 
     return updatedExercise;
 }
@@ -307,6 +328,39 @@ export const deleteExerciseForAdminService = async (data: { id: string }) => {
     return exercise;
 }
 
+/**
+ * Resolves a "slug:contribution,slug:contribution" CSV cell into the JSON
+ * payload `createExerciseForAdminService`/`updateExerciseForAdminService`
+ * expect. Returns `undefined` for a blank cell so the caller can leave
+ * existing muscle links untouched rather than wiping them.
+ */
+const resolveExerciseMusclesCsvCell = async (cell: string | null): Promise<string | undefined> => {
+    if (!cell || !cell.trim()) {
+        return undefined;
+    }
+    const pairs = cell.split(',').map((entry) => entry.trim()).filter(Boolean);
+    const resolved = await Promise.all(pairs.map(async (pair) => {
+        const [muscleSlug, contributionRaw] = pair.split(':').map((part) => part?.trim());
+        const contribution = parseFloat(contributionRaw);
+        if (!muscleSlug || Number.isNaN(contribution)) {
+            throw new AppError(`Invalid exerciseMuscles entry: "${pair}"`, 400);
+        }
+        const muscle = await fetchOneFromTable({
+            table: MUSCLES_TABLE,
+            where: [{
+                field: "slug",
+                operator: "=",
+                value: muscleSlug,
+            }],
+        }) as MusclesInterface;
+        if (!muscle) {
+            throw new AppError("Muscle not found: " + muscleSlug, 404);
+        }
+        return { muscle_id: muscle.id, contribution };
+    }));
+    return JSON.stringify(resolved);
+}
+
 export const importExercisesForAdminService = async (data: { file: Express.Multer.File }, added_by_admin_user_id: string) => {
     const { file } = data;
 
@@ -317,8 +371,7 @@ export const importExercisesForAdminService = async (data: { file: Express.Multe
         row: number;
         message: string;
     }[] = [];
-    const success = [];
-    const exercises = await parseCsv({
+    const rows = await parseCsv({
         buffer: file.buffer, mapRow: (row) => {
             return {
                 id: row.id || null,
@@ -335,82 +388,45 @@ export const importExercisesForAdminService = async (data: { file: Express.Multe
         visibility: 'public' | 'private';
         exerciseMuscles: string | null;
     }[];
-    const exercisesToMap: { exercise: ExercisesInterface, exerciseMuscles: { muscleSlug: string, contribution: number }[] }[] = [];
-    await Promise.all(exercises.map(async (exercise) => {
+
+    const success: ExercisesInterface[] = [];
+
+    await Promise.all(rows.map(async (row, index) => {
         try {
-            let savedExercise: ExercisesInterface | null = null;
-            if (exercise.id) {
+            const exerciseMuscles = await resolveExerciseMusclesCsvCell(row.exerciseMuscles);
+
+            let savedExercise: ExercisesInterface;
+            if (row.id) {
                 savedExercise = await updateExerciseForAdminService({
-                    id: exercise.id,
-                    name: exercise.name,
-                    description: exercise.description,
-                    added_by_admin_user_id: added_by_admin_user_id,
-                    visibility: exercise.visibility,
+                    id: row.id,
+                    name: row.name,
+                    description: row.description,
+                    added_by_admin_user_id,
+                    visibility: row.visibility,
+                    exerciseMuscles,
                 });
             } else {
                 savedExercise = await createExerciseForAdminService({
-                    name: exercise.name,
-                    description: exercise.description,
-                    added_by_admin_user_id: added_by_admin_user_id,
-                    visibility: exercise.visibility,
+                    name: row.name,
+                    description: row.description,
+                    added_by_admin_user_id,
+                    visibility: row.visibility,
+                    exerciseMuscles,
                 });
             }
-            let parsedExercieMuscles: { muscleSlug: string, contribution: number }[] = [];
-            const _muscles = exercise.exerciseMuscles ? exercise.exerciseMuscles?.split(',') : [];
-            for (const muscle of _muscles) {
-                const [muscleSlug, contribution] = muscle.split(':');
-                parsedExercieMuscles.push({ muscleSlug, contribution: parseFloat(contribution) });
-            }
-            if (parsedExercieMuscles.length > 0) {
-                exercisesToMap.push({ exercise: savedExercise, exerciseMuscles: parsedExercieMuscles });
-            }
-        } catch (error: any) {
+            success.push(savedExercise);
+        } catch (error) {
             errors.push({
-                row: exercise.id ? exercises.indexOf(exercise) + 1 : exercises.length + 1,
+                row: index + 1,
                 message: error instanceof AppError ? error.message : "Unknown error",
             });
         }
     }));
-    await Promise.all(exercisesToMap.map(async (exerciseData) => {
-        const { exercise, exerciseMuscles } = exerciseData;
-        await Promise.all(exerciseMuscles.map(async (exerciseMuscle) => {
-            const { muscleSlug, contribution } = exerciseMuscle;
-            const muscle = await fetchOneFromTable({
-                table: MUSCLES_TABLE,
-                where: [{
-                    field: "slug",
-                    operator: "=",
-                    value: muscleSlug,
-                }],
-            }) as MusclesInterface;
-            if (!muscle) {
-                throw new AppError("Muscle not found: " + muscleSlug, 404);
-            }
-            await addOneInTable({
-                table: EXERCISE_MUSCLES_TABLE,
-                data: { exercise_id: exercise.id, muscle_id: muscle.id, contribution: contribution },
-            });
-        }));
-    }));
 
-    const toAddRaw = [];
-    const toUpdate = [];
-    return { errors, success: exercises };
+    return { errors, success };
 }
 
 export const exportExercisesForAdminService = async () => {
-    const exercises = await fetchManyFromTable({
-        table: EXERCISES_TABLE,
-        where: [],
-    }) as ExercisesInterface[];
-    const dataToSend = [];
-    // for (const exercise of exercises) {
-    //     dataToSend.push({
-    //         id: exercise.id,
-    //         name: exercise.name,
-    //         description: exercise.description,
-    //         visibility: exercise.visibility,
-    //     });
-    // }
+    const exercises = await fetchExercisesForExportRepository();
     return exercises;
 }

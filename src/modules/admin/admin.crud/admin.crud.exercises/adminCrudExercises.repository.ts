@@ -13,22 +13,86 @@ export const fetchExerciseWithMusclesByIdRepository = async (exerciseId: string)
     if (!isValidUUID(exerciseId)) {
         throw new AppError("Invalid exercise id", 400);
     }
-    // output {...exercise, exerciseMuscles: [{muscle: {...}, contribution: number}]}
-    const query = `
-    SELECT e.*, em.*, m.*
-    FROM exercises e
-    INNER JOIN exercise_muscles em ON em.exercise_id = e.id
-    INNER JOIN muscles m on m.id = em.muscle_id
-    WHERE e.id = $1
+
+    const exerciseQuery = `
+    SELECT *
+    FROM exercises
+    WHERE id = $1 AND deleted_at IS NULL
+    `;
+    const musclesQuery = `
+    SELECT em.id AS exercise_muscle_id, em.contribution, m.*
+    FROM exercise_muscles em
+    INNER JOIN muscles m ON m.id = em.muscle_id AND m.deleted_at IS NULL
+    WHERE em.exercise_id = $1 AND em.deleted_at IS NULL
+    ORDER BY em.contribution DESC
     `;
     try {
-        const result = await pg.query(query, [exerciseId]);
+        const [exerciseResult, musclesResult] = await Promise.all([
+            pg.query(exerciseQuery, [exerciseId]),
+            pg.query(musclesQuery, [exerciseId]),
+        ]);
 
-        return result.rows as { exercise: ExercisesInterface, exerciseMuscles: { muscle: MusclesInterface, contribution: number }[] }[];
+        const exercise = exerciseResult.rows[0] as ExercisesInterface | undefined;
+        if (!exercise) {
+            throw new AppError("Exercise not found", 404);
+        }
+
+        const exerciseMuscles = musclesResult.rows.map((row) => {
+            const { exercise_muscle_id, contribution, ...muscle } = row;
+            return {
+                id: exercise_muscle_id as string,
+                contribution: Number(contribution),
+                muscle: muscle as MusclesInterface,
+            };
+        });
+
+        return {
+            exercise,
+            exerciseMuscles,
+        } as {
+            exercise: ExercisesInterface;
+            exerciseMuscles: { id: string, muscle: MusclesInterface, contribution: number }[];
+        };
     } catch (error) {
-        console.log(query);
+        if (error instanceof AppError) {
+            throw error;
+        }
+        console.log(exerciseQuery, musclesQuery);
         console.log(exerciseId);
         console.log(error);
         throw new AppError("Failed to fetch exercise muscles from exercise id", 500);
+    }
+}
+
+/**
+ * Exports exercises with their linked muscles flattened into a single
+ * "slug:contribution,slug:contribution" string under `exerciseMuscles`,
+ * matching the format `importExercisesForAdminService` expects back on
+ * re-import.
+ */
+export const fetchExercisesForExportRepository = async () => {
+    const query = `
+    SELECT
+        e.*,
+        COALESCE(
+            string_agg(m.slug || ':' || em.contribution, ',' ORDER BY m.slug),
+            ''
+        ) AS "exerciseMuscles"
+    FROM exercises e
+    LEFT JOIN exercise_muscles em
+        ON em.exercise_id = e.id AND em.deleted_at IS NULL
+    LEFT JOIN muscles m
+        ON m.id = em.muscle_id AND m.deleted_at IS NULL
+    WHERE e.deleted_at IS NULL
+    GROUP BY e.id
+    ORDER BY e.name ASC
+    `;
+    try {
+        const result = await pg.query(query);
+        return result.rows as (ExercisesInterface & { exerciseMuscles: string })[];
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to export exercises", 500);
     }
 }
