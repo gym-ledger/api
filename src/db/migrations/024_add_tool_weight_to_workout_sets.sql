@@ -1,0 +1,2 @@
+ALTER TABLE workout_sets
+ADD COLUMN IF NOT EXISTS tool_weight DECIMAL(6, 2);

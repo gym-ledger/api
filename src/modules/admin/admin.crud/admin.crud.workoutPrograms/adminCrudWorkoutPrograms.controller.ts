@@ -3,8 +3,10 @@ import { responseSend } from "../../../../helpers/response-send.js";
 import {
     listWorkoutProgramsForAdminService,
     viewWorkoutProgramForAdminService,
+    listWorkoutProgramVersionsForAdminService,
     createWorkoutProgramForAdminService,
     updateWorkoutProgramForAdminService,
+    createWorkoutProgramVersionForAdminService,
     deleteWorkoutProgramForAdminService,
 } from "./adminCrudWorkoutPrograms.service.js";
 
@@ -22,9 +24,23 @@ export const listWorkoutProgramsForAdmin = async (req: Request, res: Response, n
 
 export const viewWorkoutProgramForAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await viewWorkoutProgramForAdminService({ id: req.params.id as string });
+        const data = await viewWorkoutProgramForAdminService({
+            id: req.params.id as string,
+            versionId: req.query.versionId as string | undefined,
+        });
 
         return responseSend(res, 200, "Workout program viewed successfully", data);
+
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const listWorkoutProgramVersionsForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await listWorkoutProgramVersionsForAdminService({ id: req.params.id as string });
+
+        return responseSend(res, 200, "Workout program versions listed successfully", data);
 
     } catch (error) {
         next(error);
@@ -45,9 +61,28 @@ export const createWorkoutProgramForAdmin = async (req: Request, res: Response, 
 
 export const updateWorkoutProgramForAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await updateWorkoutProgramForAdminService(req.body);
+        const data = await updateWorkoutProgramForAdminService({
+            ...req.body,
+            id: req.params.id as string,
+            added_by_admin_user_id: req.adminUserId as string,
+        });
 
         return responseSend(res, 200, "Workout program updated successfully", data);
+
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const createWorkoutProgramVersionForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await createWorkoutProgramVersionForAdminService({
+            ...req.body,
+            id: req.params.id as string,
+            added_by_admin_user_id: req.adminUserId as string,
+        });
+
+        return responseSend(res, 200, "Workout program version saved successfully", data);
 
     } catch (error) {
         next(error);

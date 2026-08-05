@@ -28,6 +28,8 @@ export interface WorkoutProgramVersionsInterface {
 
     workout_program_id: string;
 
+    description: string;
+
     version_number: number;
 
     version_name: string;

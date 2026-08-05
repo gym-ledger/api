@@ -16,8 +16,10 @@ import {
 import {
     listWorkoutProgramsForAdmin,
     viewWorkoutProgramForAdmin,
+    listWorkoutProgramVersionsForAdmin,
     createWorkoutProgramForAdmin,
     updateWorkoutProgramForAdmin,
+    createWorkoutProgramVersionForAdmin,
     deleteWorkoutProgramForAdmin,
 } from './admin.crud.workoutPrograms/adminCrudWorkoutPrograms.controller.js';
 import {
@@ -76,8 +78,10 @@ adminCrudRouter.delete("/progression-rules/delete/:id", asyncHandler(deleteProgr
 // workout programs
 adminCrudRouter.get("/workout-programs/list", asyncHandler(listWorkoutProgramsForAdmin));
 adminCrudRouter.get("/workout-programs/view/:id", asyncHandler(viewWorkoutProgramForAdmin));
+adminCrudRouter.get("/workout-programs/:id/versions", asyncHandler(listWorkoutProgramVersionsForAdmin));
 adminCrudRouter.post("/workout-programs/create", asyncHandler(createWorkoutProgramForAdmin));
 adminCrudRouter.put("/workout-programs/update/:id", asyncHandler(updateWorkoutProgramForAdmin));
+adminCrudRouter.post("/workout-programs/:id/versions", asyncHandler(createWorkoutProgramVersionForAdmin));
 adminCrudRouter.delete("/workout-programs/delete/:id", asyncHandler(deleteWorkoutProgramForAdmin));
 
 
