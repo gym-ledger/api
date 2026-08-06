@@ -440,6 +440,7 @@ const insertSetWithDropsets = async (params: {
     rir?: number | null,
     effort?: string | null,
     discomfort_notes?: string | null,
+    is_warmup?: boolean | null,
     drop_sets?: DropSetInput[] | null,
 }): Promise<{ set: WorkoutSetsInterface, dropSets: WorkoutSetsInterface[] }> => {
     const {
@@ -452,6 +453,7 @@ const insertSetWithDropsets = async (params: {
         rir,
         effort,
         discomfort_notes,
+        is_warmup,
         drop_sets,
     } = params;
 
@@ -467,6 +469,7 @@ const insertSetWithDropsets = async (params: {
             rir: rir ?? null,
             effort: effort || null,
             discomfort_notes: discomfort_notes || null,
+            is_warmup: is_warmup ?? false,
         },
     }) as WorkoutSetsInterface;
 
@@ -507,6 +510,7 @@ export const createWorkoutSetService = async (data: {
     rir?: number | null,
     effort?: string | null,
     discomfort_notes?: string | null,
+    is_warmup?: boolean | null,
     alarm_message?: string | null,
     drop_sets?: DropSetInput[] | null,
 }) => {
@@ -520,6 +524,7 @@ export const createWorkoutSetService = async (data: {
         rir,
         effort,
         discomfort_notes,
+        is_warmup,
         alarm_message,
         drop_sets,
     } = data;
@@ -575,6 +580,7 @@ export const createWorkoutSetService = async (data: {
         rir,
         effort,
         discomfort_notes,
+        is_warmup,
         drop_sets,
     });
 
@@ -612,8 +618,9 @@ export const updateWorkoutSetService = async (data: {
     rir?: number | null,
     effort?: string | null,
     discomfort_notes?: string | null,
+    is_warmup?: boolean | null,
 }) => {
-    const { userId, setId, weight, tool_weight, reps, rir, effort, discomfort_notes } = data;
+    const { userId, setId, weight, tool_weight, reps, rir, effort, discomfort_notes, is_warmup } = data;
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
@@ -645,6 +652,7 @@ export const updateWorkoutSetService = async (data: {
             rir: rir ?? null,
             effort: effort || null,
             discomfort_notes: discomfort_notes || null,
+            is_warmup: is_warmup ?? false,
         },
         where: [{ field: "id", operator: "=", value: setId }],
     }) as WorkoutSetsInterface;
@@ -664,6 +672,7 @@ export interface BatchSetInput {
     rir?: number | null,
     effort?: string | null,
     discomfort_notes?: string | null,
+    is_warmup?: boolean | null,
     alarm_message?: string | null,
     drop_sets?: DropSetInput[] | null,
 }
@@ -709,6 +718,7 @@ export const createWorkoutSetsBatchService = async (data: {
             rir,
             effort,
             discomfort_notes,
+            is_warmup,
             alarm_message,
             drop_sets,
         } = item;
@@ -777,6 +787,7 @@ export const createWorkoutSetsBatchService = async (data: {
                 rir,
                 effort,
                 discomfort_notes,
+                is_warmup,
                 drop_sets,
             });
 
