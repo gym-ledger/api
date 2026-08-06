@@ -1,6 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
+import compression from "compression";
 
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
@@ -13,6 +14,7 @@ const app = express();
 
 app.use(helmet());
 app.use(cors());
+app.use(compression());
 app.use(express.json());
 
 
