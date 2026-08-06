@@ -214,7 +214,7 @@ export const verifyOtpForLoginService = async (data: any) => {
                 {
                     field: "phone_number",
                     operator: "=",
-                    value: phoneNumber,
+                    value: phoneNumber?.number,
                 },
                 {
                     field: "phone_country_code",
