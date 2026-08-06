@@ -321,6 +321,7 @@ export const refreshTokensService = async (refreshToken: string) => {
             operator: "=",
             value: sessionObj.id,
         }],
+        useSoftDelete: false,
     });
     return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken };
 }
