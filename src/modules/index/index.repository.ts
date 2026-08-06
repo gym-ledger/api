@@ -23,6 +23,7 @@ export const allowedTables = [
     "muscles",
     "exercise_muscles",
     "workout_set_alarms",
+    "user_muscle_signals",
 ];
 export type IFilter = Record<
     string,

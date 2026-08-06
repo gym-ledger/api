@@ -7,6 +7,7 @@
   "scripts": {
     "migrate": "tsx src/scripts/run-migrations.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
+    "recompute:muscle-signals": "tsx src/scripts/recompute-muscle-signals.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",

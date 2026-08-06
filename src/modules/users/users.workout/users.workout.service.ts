@@ -19,6 +19,7 @@ import {
     fetchWorkoutSessionDetailRepository,
     fetchOngoingWorkoutSessionRepository,
 } from "./users.workout.repository.js";
+import { recordMuscleStimulusForLoggedSets } from "../users.muscleSignals/users.muscleSignals.service.js";
 
 // ---------------------------------------------------------------------------
 // Ownership helpers — shared by the browsing/session/set endpoints below.
@@ -593,6 +594,12 @@ export const createWorkoutSetService = async (data: {
         }) as WorkoutSetAlarmsInterface;
     }
 
+    await recordMuscleStimulusForLoggedSets({
+        userId,
+        workoutProgramExerciseId: workout_program_exercise_id,
+        sets: [set, ...dropSets].map((s) => ({ rir: s.rir, is_warmup: s.is_warmup })),
+    });
+
     return { set, dropSets, alarm };
 }
 
@@ -788,6 +795,12 @@ export const createWorkoutSetsBatchService = async (data: {
                     },
                 }) as WorkoutSetAlarmsInterface;
             }
+
+            await recordMuscleStimulusForLoggedSets({
+                userId,
+                workoutProgramExerciseId: workout_program_exercise_id,
+                sets: [set, ...dropSets].map((s) => ({ rir: s.rir, is_warmup: s.is_warmup })),
+            });
 
             results.push({ client_id, set, dropSets, alarm });
         } catch (error) {
