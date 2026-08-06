@@ -325,3 +325,37 @@ export const refreshTokensService = async (refreshToken: string) => {
     });
     return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken };
 }
+
+/**
+ * Invalidates a single session by deleting its `user_sessions` row so the
+ * given refresh token can never be used again. Idempotent — a refresh token
+ * that doesn't match any session (already logged out, expired and cleaned
+ * up, etc.) is treated as a no-op rather than an error, since the caller's
+ * goal ("this token should no longer work") is already satisfied.
+ */
+export const logoutService = async (refreshToken: string) => {
+    if (!refreshToken) {
+        throw new AppError("Refresh token is required", 400);
+    }
+    const sessionObj = await fetchOneFromTable({
+        table: USER_SESSIONS_TABLE,
+        where: [{
+            field: "refresh_token_hash",
+            operator: "=",
+            value: hashToken(refreshToken),
+        }],
+        useSoftDelete: false,
+    }) as UserSessionsInterface | null;
+    if (!sessionObj) {
+        return;
+    }
+    await deleteOneFromTable({
+        table: USER_SESSIONS_TABLE,
+        where: [{
+            field: "id",
+            operator: "=",
+            value: sessionObj.id,
+        }],
+        useSoftDelete: false,
+    });
+}

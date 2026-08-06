@@ -3,7 +3,8 @@ import { AppError } from "../../shared/errors/AppError.js";
 import {
     sendOtpForLoginService,
     verifyOtpForLoginService,
-    refreshTokensService
+    refreshTokensService,
+    logoutService
 } from "./auth.service.js";
 import { responseSend } from '../../helpers/response-send.js';
 
@@ -33,6 +34,17 @@ export const refreshTokens = async (req: Request, res: Response, next: NextFunct
         const data = await refreshTokensService(req.headers["refresh-token"] as string);
 
         responseSend(res, 200, "Tokens refreshed successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        // refreshToken is in headers: { "refresh-token": "refresh_token" }, same as refresh-tokens
+        await logoutService(req.headers["refresh-token"] as string);
+
+        responseSend(res, 200, "Logged out successfully", null);
     } catch (error) {
         next(error);
     }
