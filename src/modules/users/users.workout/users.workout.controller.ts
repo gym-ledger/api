@@ -14,6 +14,7 @@ import {
     finishWorkoutSessionService,
     getOngoingWorkoutSessionService,
     createWorkoutSetService,
+    updateWorkoutSetService,
     createWorkoutSetsBatchService,
     getExerciseHistoryService,
     listWorkoutSessionsService,
@@ -179,6 +180,24 @@ export const createWorkoutSet = async (req: Request, res: Response, next: NextFu
             drop_sets: req.body.drop_sets,
         });
         return responseSend(res, 200, "Set logged successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const updateWorkoutSet = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await updateWorkoutSetService({
+            userId: req.userId,
+            setId: req.params.setId as string,
+            weight: req.body.weight,
+            tool_weight: req.body.tool_weight,
+            reps: req.body.reps,
+            rir: req.body.rir,
+            effort: req.body.effort,
+            discomfort_notes: req.body.discomfort_notes,
+        });
+        return responseSend(res, 200, "Set updated successfully", data);
     } catch (error) {
         next(error);
     }

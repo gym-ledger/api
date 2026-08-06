@@ -596,6 +596,53 @@ export const createWorkoutSetService = async (data: {
     return { set, dropSets, alarm };
 }
 
+export const updateWorkoutSetService = async (data: {
+    userId?: string,
+    setId?: string,
+    weight?: number | null,
+    tool_weight?: number | null,
+    reps?: number | null,
+    rir?: number | null,
+    effort?: string | null,
+    discomfort_notes?: string | null,
+}) => {
+    const { userId, setId, weight, tool_weight, reps, rir, effort, discomfort_notes } = data;
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    if (!setId) {
+        throw new AppError("Set ID is required", 400);
+    }
+    if (!isValidUUID(setId)) {
+        throw new AppError("Invalid set id", 400);
+    }
+    validateSetFields({ weight, tool_weight, reps }, "");
+
+    const set = await fetchOneFromTable({
+        table: WORKOUT_SETS_TABLE,
+        where: [{ field: "id", operator: "=", value: setId }],
+    }) as WorkoutSetsInterface | null;
+    if (!set) {
+        throw new AppError("Set not found", 404);
+    }
+    // Sets don't carry user_id directly — ownership is proven via the
+    // session they were logged against.
+    await getOwnedWorkoutSessionOrThrow(userId, set.workout_session_id);
+
+    return await updateOneInTable({
+        table: WORKOUT_SETS_TABLE,
+        data: {
+            weight: weight ?? null,
+            tool_weight: tool_weight ?? null,
+            reps: reps ?? null,
+            rir: rir ?? null,
+            effort: effort || null,
+            discomfort_notes: discomfort_notes || null,
+        },
+        where: [{ field: "id", operator: "=", value: setId }],
+    }) as WorkoutSetsInterface;
+}
+
 // ---------------------------------------------------------------------------
 // Batch set logging (offline-sync flush)
 // ---------------------------------------------------------------------------
