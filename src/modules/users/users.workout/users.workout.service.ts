@@ -1223,7 +1223,10 @@ export const getRecentPRsService = async (data: {
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
-    const limit = Math.min(Math.max(data.limit ?? 10, 1), 50);
+    // Cap high enough to comfortably cover "every exercise this user has
+    // ever logged" for the Strength tab's full PR list, not just a
+    // dashboard-card-sized preview.
+    const limit = Math.min(Math.max(data.limit ?? 10, 1), 300);
     return await fetchRecentPRsRepository(userId, limit);
 }
 
@@ -1242,6 +1245,76 @@ const percentChange = (from: number, to: number): number | null =>
  * best/avg week, and a ~3-months-ago growth rate — one query for all of it.
  * Backs both the Progress tab's Overview and Volume sub-tabs.
  */
+/**
+ * Full completed weeks (Monday-start) from the earliest currently-active
+ * assignment's start through the most recent completed week, and how many
+ * of those were "consistent" (every required weekday that week was
+ * trained). The current, still-in-progress week is excluded — a week can't
+ * be judged consistent until it's actually over. Same known limitation as
+ * getWorkoutConsistencyService: required weekdays are derived from the
+ * user's *current* active assignments, applied retroactively across the
+ * whole window (no historical activation-window data exists).
+ */
+const computeWeeklyConsistencyHistory = async (
+    userId: string,
+    timezone: string,
+): Promise<{ consistent_weeks: number, total_tracked_weeks: number }> => {
+    const activeAssignments = await fetchUserAssignmentsRepository({ userId, activeOnly: true });
+    if (activeAssignments.length === 0) {
+        return { consistent_weeks: 0, total_tracked_weeks: 0 };
+    }
+
+    let earliestStartStr: string | null = null;
+    for (const a of activeAssignments) {
+        if (!a.started_at) continue;
+        const s = localDateString(new Date(a.started_at), timezone);
+        if (!earliestStartStr || s < earliestStartStr) earliestStartStr = s;
+    }
+    if (!earliestStartStr) {
+        return { consistent_weeks: 0, total_tracked_weeks: 0 };
+    }
+
+    const todayStr = localDateString(new Date(), timezone);
+    const currentWeekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
+    const earliestWeekStartStr = addDays(earliestStartStr, -(isoWeekdayOf(earliestStartStr) - 1));
+    const lastFullWeekStartStr = addDays(currentWeekStartStr, -7);
+
+    // The active assignment(s) started this week or later — no fully
+    // completed tracked week exists yet.
+    if (earliestWeekStartStr > lastFullWeekStartStr) {
+        return { consistent_weeks: 0, total_tracked_weeks: 0 };
+    }
+
+    const [requiredWeekdays, workedOutDates] = await Promise.all([
+        fetchRequiredWeekdaysRepository(activeAssignments.map((a) => a.workout_program_version_id)),
+        fetchWorkedOutDatesRepository(userId, timezone, earliestWeekStartStr),
+    ]);
+    const requiredSet = new Set(requiredWeekdays);
+    const workedSet = new Set(workedOutDates);
+
+    let consistent_weeks = 0;
+    let total_tracked_weeks = 0;
+    for (
+        let weekStart = earliestWeekStartStr;
+        weekStart <= lastFullWeekStartStr;
+        weekStart = addDays(weekStart, 7)
+    ) {
+        total_tracked_weeks++;
+        let hasRequiredDay = false;
+        let allRequiredDaysTrained = true;
+        for (let i = 0; i < 7; i++) {
+            const day = addDays(weekStart, i);
+            if (requiredSet.has(isoWeekdayOf(day))) {
+                hasRequiredDay = true;
+                if (!workedSet.has(day)) allRequiredDaysTrained = false;
+            }
+        }
+        if (hasRequiredDay && allRequiredDaysTrained) consistent_weeks++;
+    }
+
+    return { consistent_weeks, total_tracked_weeks };
+}
+
 export const getProgressOverviewService = async (userId?: string) => {
     if (!userId) {
         throw new AppError("User ID is required", 400);
@@ -1252,10 +1325,11 @@ export const getProgressOverviewService = async (userId?: string) => {
     const currentWeekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
     const seriesStartStr = addDays(currentWeekStartStr, -7 * (PROGRESS_SERIES_WEEKS - 1));
 
-    const [totalVolume, { total_workouts, avg_duration_seconds }, rawSeries] = await Promise.all([
+    const [totalVolume, { total_workouts, avg_duration_seconds }, rawSeries, weeklyConsistency] = await Promise.all([
         fetchTonnageSinceRepository(userId, timezone),
         fetchWorkoutCountAndAvgDurationRepository(userId),
         fetchWeeklyVolumeSeriesRepository(userId, timezone, seriesStartStr),
+        computeWeeklyConsistencyHistory(userId, timezone),
     ]);
 
     const volumeByWeek = new Map(rawSeries.map((w) => [w.week_start, w.volume]));
@@ -1287,6 +1361,8 @@ export const getProgressOverviewService = async (userId?: string) => {
         best_week_volume: Math.max(...chartVolumes),
         avg_week_volume: mean(chartVolumes),
         growth_rate_pct: percentChange(mean(earlier4), mean(last4)),
+        consistent_weeks: weeklyConsistency.consistent_weeks,
+        total_tracked_weeks: weeklyConsistency.total_tracked_weeks,
     };
 }
 
