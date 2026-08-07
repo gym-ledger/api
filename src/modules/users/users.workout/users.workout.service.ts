@@ -27,6 +27,9 @@ import {
     fetchRequiredWeekdaysRepository,
     fetchWorkedOutDatesRepository,
     fetchTonnageSinceRepository,
+    fetchRecentPRsRepository,
+    fetchWorkoutCountAndAvgDurationRepository,
+    fetchWeeklyVolumeSeriesRepository,
 } from "./users.workout.repository.js";
 import { recordMuscleStimulusForLoggedSets } from "../users.muscleSignals/users.muscleSignals.service.js";
 
@@ -1142,6 +1145,12 @@ export const getWorkoutConsistencyService = async (userId?: string) => {
     const { timezone } = await getUserHealthPreferencesOrDefault(userId);
     const activeAssignments = await fetchUserAssignmentsRepository({ userId, activeOnly: true });
 
+    // Computed unconditionally — zero active plans just means every weekday
+    // comes back required=false, which is exactly "every day is a rest day."
+    const requiredWeekdays = new Set(
+        await fetchRequiredWeekdaysRepository(activeAssignments.map((a) => a.workout_program_version_id)),
+    );
+
     const todayStr = localDateString(new Date(), timezone);
     const weekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
     const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStartStr, i));
@@ -1156,15 +1165,15 @@ export const getWorkoutConsistencyService = async (userId?: string) => {
     const sinceStr = earliestStartStr && earliestStartStr < weekStartStr ? earliestStartStr : weekStartStr;
     const workedOutDates = new Set(await fetchWorkedOutDatesRepository(userId, timezone, sinceStr));
 
-    const week = weekDates.map((date) => ({ date, trained: workedOutDates.has(date) }));
+    const week = weekDates.map((date) => ({
+        date,
+        trained: workedOutDates.has(date),
+        required: requiredWeekdays.has(isoWeekdayOf(date)),
+    }));
 
     if (activeAssignments.length === 0 || !earliestStartStr) {
         return { current_streak: 0, week };
     }
-
-    const requiredWeekdays = new Set(
-        await fetchRequiredWeekdaysRepository(activeAssignments.map((a) => a.workout_program_version_id)),
-    );
 
     let streak = 0;
     let cursor = todayStr;
@@ -1200,6 +1209,85 @@ export const getWeeklyVolumeService = async (userId?: string) => {
 
     const weekly_volume = await fetchTonnageSinceRepository(userId, timezone, weekStartStr);
     return { weekly_volume, weight_units };
+}
+
+/**
+ * The user's current PR for every exercise they've logged, most-recently-set
+ * first. See workout-gym-api/algorithms/personal-records.md.
+ */
+export const getRecentPRsService = async (data: {
+    userId?: string,
+    limit?: number,
+}) => {
+    const { userId } = data;
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    const limit = Math.min(Math.max(data.limit ?? 10, 1), 50);
+    return await fetchRecentPRsRepository(userId, limit);
+}
+
+const PROGRESS_SERIES_WEEKS = 16;
+const PROGRESS_CHART_WEEKS = 8;
+
+const mean = (values: number[]): number =>
+    values.length === 0 ? 0 : values.reduce((sum, v) => sum + v, 0) / values.length;
+
+const percentChange = (from: number, to: number): number | null =>
+    from === 0 ? null : ((to - from) / from) * 100;
+
+/**
+ * All-time volume/workout-count/avg-duration, plus a 16-week tonnage series
+ * (oldest first) used to derive the 8-week chart, week-over-week change,
+ * best/avg week, and a ~3-months-ago growth rate — one query for all of it.
+ * Backs both the Progress tab's Overview and Volume sub-tabs.
+ */
+export const getProgressOverviewService = async (userId?: string) => {
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+
+    const { timezone, weight_units } = await getUserHealthPreferencesOrDefault(userId);
+    const todayStr = localDateString(new Date(), timezone);
+    const currentWeekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
+    const seriesStartStr = addDays(currentWeekStartStr, -7 * (PROGRESS_SERIES_WEEKS - 1));
+
+    const [totalVolume, { total_workouts, avg_duration_seconds }, rawSeries] = await Promise.all([
+        fetchTonnageSinceRepository(userId, timezone),
+        fetchWorkoutCountAndAvgDurationRepository(userId),
+        fetchWeeklyVolumeSeriesRepository(userId, timezone, seriesStartStr),
+    ]);
+
+    const volumeByWeek = new Map(rawSeries.map((w) => [w.week_start, w.volume]));
+    const weekStarts = Array.from({ length: PROGRESS_SERIES_WEEKS }, (_, i) =>
+        addDays(seriesStartStr, 7 * i),
+    );
+    const series = weekStarts.map((week_start) => ({
+        week_start,
+        volume: volumeByWeek.get(week_start) ?? 0,
+    }));
+
+    const chartWeeks = series.slice(-PROGRESS_CHART_WEEKS);
+    const chartVolumes = chartWeeks.map((w) => w.volume);
+
+    const lastWeek = series[series.length - 1].volume;
+    const priorWeek = series[series.length - 2]?.volume ?? 0;
+
+    // "~3 months ago" comparison: last 4 weeks vs. the 4 weeks from 9-12 weeks back.
+    const last4 = series.slice(-4).map((w) => w.volume);
+    const earlier4 = series.slice(-13, -9).map((w) => w.volume);
+
+    return {
+        total_volume: totalVolume,
+        total_workouts,
+        avg_duration_seconds,
+        weight_units,
+        weekly_volume_series: chartWeeks,
+        week_over_week_change_pct: percentChange(priorWeek, lastWeek),
+        best_week_volume: Math.max(...chartVolumes),
+        avg_week_volume: mean(chartVolumes),
+        growth_rate_pct: percentChange(mean(earlier4), mean(last4)),
+    };
 }
 
 export const getDashboardStatsService = async (userId?: string) => {

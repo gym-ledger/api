@@ -24,6 +24,8 @@ import {
     listActiveAlarmsService,
     discardAlarmService,
     getDashboardStatsService,
+    getRecentPRsService,
+    getProgressOverviewService,
 } from "./users.workout.service.js";
 
 // Plans
@@ -314,6 +316,27 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
     try {
         const data = await getDashboardStatsService(req.userId);
         return responseSend(res, 200, "Dashboard stats fetched successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getRecentPRs = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getRecentPRsService({
+            userId: req.userId,
+            limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined,
+        });
+        return responseSend(res, 200, "Recent PRs fetched successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getProgressOverview = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getProgressOverviewService(req.userId);
+        return responseSend(res, 200, "Progress overview fetched successfully", data);
     } catch (error) {
         next(error);
     }

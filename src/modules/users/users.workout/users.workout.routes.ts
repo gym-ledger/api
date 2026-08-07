@@ -25,6 +25,8 @@ import {
     listActiveAlarms,
     discardAlarm,
     getDashboardStats,
+    getRecentPRs,
+    getProgressOverview,
 } from "./users.workout.controller.js";
 
 const usersWorkoutRouter = Router();
@@ -67,5 +69,7 @@ usersWorkoutRouter.post("/alarms/:alarmId/discard", verifyUserToken, asyncHandle
 
 // Dashboard stats
 usersWorkoutRouter.get("/stats/dashboard", verifyUserToken, asyncHandler(getDashboardStats));
+usersWorkoutRouter.get("/stats/recent-prs", verifyUserToken, asyncHandler(getRecentPRs));
+usersWorkoutRouter.get("/stats/progress-overview", verifyUserToken, asyncHandler(getProgressOverview));
 
 export default usersWorkoutRouter;

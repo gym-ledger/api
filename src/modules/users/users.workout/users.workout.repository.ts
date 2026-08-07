@@ -473,8 +473,12 @@ export const fetchWorkedOutDatesRepository = async (
     timezone: string,
     sinceDate: string,
 ): Promise<string[]> => {
+    // Cast to text (not date) so node-postgres never parses it into a JS
+    // Date — that parsing anchors to the Node process's *local* system
+    // timezone, not UTC, silently shifting the calendar day on any
+    // deployment whose TZ isn't UTC.
     const query = `
-    SELECT DISTINCT (wsess.completed_at AT TIME ZONE $2)::date AS worked_date
+    SELECT DISTINCT to_char((wsess.completed_at AT TIME ZONE $2)::date, 'YYYY-MM-DD') AS worked_date
     FROM workout_sessions wsess
     WHERE wsess.user_id = $1
         AND wsess.completed_at IS NOT NULL
@@ -483,10 +487,7 @@ export const fetchWorkedOutDatesRepository = async (
     `;
     try {
         const result = await pg.query(query, [userId, timezone, sinceDate]);
-        return result.rows.map((row) => {
-            const d = row.worked_date as Date;
-            return d.toISOString().slice(0, 10);
-        });
+        return result.rows.map((row) => row.worked_date as string);
     } catch (error) {
         console.log(query);
         console.log(error);
@@ -494,12 +495,22 @@ export const fetchWorkedOutDatesRepository = async (
     }
 }
 
-/** Sum of (weight + tool_weight) * reps across non-warmup, non-deleted sets logged on or after `sinceDate` (in the given timezone). */
+/**
+ * Sum of (weight + tool_weight) * reps across non-warmup, non-deleted sets,
+ * optionally restricted to on-or-after `sinceDate` (in the given timezone).
+ * Omitting `sinceDate` gives the user's all-time total.
+ */
 export const fetchTonnageSinceRepository = async (
     userId: string,
     timezone: string,
-    sinceDate: string,
+    sinceDate?: string,
 ): Promise<number> => {
+    const params: unknown[] = [userId];
+    let sinceClause = "";
+    if (sinceDate) {
+        params.push(timezone, sinceDate);
+        sinceClause = `AND (ws.created_at AT TIME ZONE $2)::date >= $3::date`;
+    }
     const query = `
     SELECT COALESCE(SUM((COALESCE(ws.weight, 0) + COALESCE(ws.tool_weight, 0)) * COALESCE(ws.reps, 0)), 0) AS total
     FROM workout_sets ws
@@ -508,15 +519,162 @@ export const fetchTonnageSinceRepository = async (
         AND ws.deleted_at IS NULL
         AND wsess.deleted_at IS NULL
         AND ws.is_warmup = FALSE
-        AND (ws.created_at AT TIME ZONE $2)::date >= $3::date
+        ${sinceClause}
     `;
     try {
-        const result = await pg.query(query, [userId, timezone, sinceDate]);
+        const result = await pg.query(query, params);
         return Number(result.rows[0]?.total ?? 0);
     } catch (error) {
         console.log(query);
         console.log(error);
-        throw new AppError("Failed to compute weekly volume", 500);
+        throw new AppError("Failed to compute training volume", 500);
+    }
+}
+
+export interface PersonalRecordRow {
+    exercise_id: string;
+    exercise_name: string;
+    exercise_slug: string;
+    image_url: string | null;
+    achieved_at: Date;
+    load: number;
+    reps: number;
+    e1rm: number;
+}
+
+/**
+ * The user's current personal record (best estimated 1RM — Epley formula)
+ * for every exercise they've logged, newest-achieved first. See
+ * workout-gym-api/algorithms/personal-records.md for the full model.
+ */
+export const fetchRecentPRsRepository = async (
+    userId: string,
+    limit: number,
+): Promise<PersonalRecordRow[]> => {
+    const query = `
+    WITH eligible_sets AS (
+        SELECT
+            wpe.exercise_id,
+            ws.created_at,
+            (COALESCE(ws.weight, 0) + COALESCE(ws.tool_weight, 0)) AS load,
+            ws.reps
+        FROM workout_sets ws
+        INNER JOIN workout_program_exercises wpe ON wpe.id = ws.workout_program_exercise_id
+        INNER JOIN workout_sessions wsess ON wsess.id = ws.workout_session_id
+        WHERE wsess.user_id = $1
+            AND ws.deleted_at IS NULL
+            AND wsess.deleted_at IS NULL
+            AND ws.is_warmup = FALSE
+            AND ws.parent_set_id IS NULL
+            AND ws.reps IS NOT NULL
+            AND ws.reps > 0
+            AND (COALESCE(ws.weight, 0) + COALESCE(ws.tool_weight, 0)) > 0
+    ),
+    scored AS (
+        SELECT *, load * (1 + reps / 30.0) AS e1rm
+        FROM eligible_sets
+    ),
+    ranked AS (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY exercise_id ORDER BY e1rm DESC, created_at ASC) AS rn
+        FROM scored
+    )
+    SELECT
+        r.exercise_id,
+        e.name AS exercise_name,
+        e.slug AS exercise_slug,
+        e.image_url,
+        r.created_at AS achieved_at,
+        r.load,
+        r.reps,
+        r.e1rm
+    FROM ranked r
+    INNER JOIN exercises e ON e.id = r.exercise_id
+    WHERE r.rn = 1
+    ORDER BY r.created_at DESC
+    LIMIT $2
+    `;
+    try {
+        const result = await pg.query(query, [userId, limit]);
+        return result.rows.map((row) => ({
+            exercise_id: row.exercise_id,
+            exercise_name: row.exercise_name,
+            exercise_slug: row.exercise_slug,
+            image_url: row.image_url,
+            achieved_at: row.achieved_at,
+            load: Number(row.load),
+            reps: Number(row.reps),
+            e1rm: Number(row.e1rm),
+        }));
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch personal records", 500);
+    }
+}
+
+/** All-time count of completed workouts and their average duration (seconds). */
+export const fetchWorkoutCountAndAvgDurationRepository = async (
+    userId: string,
+): Promise<{ total_workouts: number, avg_duration_seconds: number | null }> => {
+    const query = `
+    SELECT
+        COUNT(*) AS total_workouts,
+        AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) AS avg_duration_seconds
+    FROM workout_sessions
+    WHERE user_id = $1
+        AND completed_at IS NOT NULL
+        AND deleted_at IS NULL
+    `;
+    try {
+        const result = await pg.query(query, [userId]);
+        const row = result.rows[0];
+        return {
+            total_workouts: Number(row?.total_workouts ?? 0),
+            avg_duration_seconds: row?.avg_duration_seconds != null ? Number(row.avg_duration_seconds) : null,
+        };
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to compute workout stats", 500);
+    }
+}
+
+/**
+ * Tonnage per calendar week (Monday-start, in the given timezone) for the
+ * last `weeksBack` weeks including the current one, oldest first. Weeks with
+ * no logged sets are omitted by the query — the caller zero-fills them.
+ */
+export const fetchWeeklyVolumeSeriesRepository = async (
+    userId: string,
+    timezone: string,
+    sinceWeekStart: string,
+): Promise<{ week_start: string, volume: number }[]> => {
+    // Cast to text (not date) so node-postgres never parses it into a JS
+    // Date — see the identical note in fetchWorkedOutDatesRepository.
+    const query = `
+    SELECT
+        to_char(date_trunc('week', (ws.created_at AT TIME ZONE $2)), 'YYYY-MM-DD') AS week_start,
+        SUM((COALESCE(ws.weight, 0) + COALESCE(ws.tool_weight, 0)) * COALESCE(ws.reps, 0)) AS volume
+    FROM workout_sets ws
+    INNER JOIN workout_sessions wsess ON wsess.id = ws.workout_session_id
+    WHERE wsess.user_id = $1
+        AND ws.deleted_at IS NULL
+        AND wsess.deleted_at IS NULL
+        AND ws.is_warmup = FALSE
+        AND (ws.created_at AT TIME ZONE $2)::date >= $3::date
+    GROUP BY week_start
+    ORDER BY week_start ASC
+    `;
+    try {
+        const result = await pg.query(query, [userId, timezone, sinceWeekStart]);
+        return result.rows.map((row) => ({
+            week_start: row.week_start as string,
+            volume: Number(row.volume),
+        }));
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to compute weekly volume series", 500);
     }
 }
 
