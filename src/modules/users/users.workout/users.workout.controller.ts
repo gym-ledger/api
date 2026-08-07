@@ -6,10 +6,12 @@ import {
     listActiveWorkoutPlansService,
     selectWorkoutPlanService,
     deactivateWorkoutPlanService,
+    getPlanDetailService,
     listDaysForAssignmentService,
     listSessionsForDayService,
     listExercisesForSessionService,
     startWorkoutSessionService,
+    addAdhocExerciseToSessionService,
     getSessionSetsService,
     finishWorkoutSessionService,
     getOngoingWorkoutSessionService,
@@ -21,6 +23,7 @@ import {
     getWorkoutSessionDetailService,
     listActiveAlarmsService,
     discardAlarmService,
+    getDashboardStatsService,
 } from "./users.workout.service.js";
 
 // Plans
@@ -70,6 +73,18 @@ export const deactivateWorkoutPlan = async (req: Request, res: Response, next: N
             assignmentId: req.params.assignmentId as string,
         });
         return responseSend(res, 200, "Workout plan deselected successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getPlanDetail = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getPlanDetailService({
+            userId: req.userId,
+            workoutProgramVersionId: req.params.workoutProgramVersionId as string,
+        });
+        return responseSend(res, 200, "Workout plan detail fetched successfully", data);
     } catch (error) {
         next(error);
     }
@@ -125,6 +140,19 @@ export const startWorkoutSession = async (req: Request, res: Response, next: Nex
             program_day_session_id: req.body.program_day_session_id,
         });
         return responseSend(res, 200, "Workout session started successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const addAdhocExerciseToSession = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await addAdhocExerciseToSessionService({
+            userId: req.userId,
+            sessionId: req.params.sessionId as string,
+            exercise_id: req.body.exercise_id,
+        });
+        return responseSend(res, 200, "Exercise added to session successfully", data);
     } catch (error) {
         next(error);
     }
@@ -276,6 +304,16 @@ export const discardAlarm = async (req: Request, res: Response, next: NextFuncti
             alarmId: req.params.alarmId as string,
         });
         return responseSend(res, 200, "Alarm discarded successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+// Dashboard stats
+export const getDashboardStats = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getDashboardStatsService(req.userId);
+        return responseSend(res, 200, "Dashboard stats fetched successfully", data);
     } catch (error) {
         next(error);
     }

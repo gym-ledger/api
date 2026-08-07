@@ -93,6 +93,208 @@ export const fetchLatestPublicVersionForProgramRepository = async (
     }
 }
 
+export interface PlanVersionAccessRow {
+    workout_program_id: string;
+    program_name: string;
+    program_slug: string;
+    program_visibility: string;
+    workout_program_version_id: string;
+    version_number: number;
+    version_name: string | null;
+    version_visibility: string;
+    description: string;
+    training_days: number;
+    split_type: string;
+    session_ordering_logic: string;
+    duration_type: string;
+    duration_weeks: number;
+}
+
+/** A program version + its parent program, regardless of visibility — the caller decides access. */
+export const fetchPlanVersionForAccessCheckRepository = async (
+    workoutProgramVersionId: string,
+): Promise<PlanVersionAccessRow | null> => {
+    const query = `
+    SELECT
+        wp.id AS workout_program_id,
+        wp.name AS program_name,
+        wp.slug AS program_slug,
+        wp.visibility AS program_visibility,
+        wpv.id AS workout_program_version_id,
+        wpv.version_number,
+        wpv.version_name,
+        wpv.visibility AS version_visibility,
+        wpv.description,
+        wpv.training_days,
+        wpv.split_type,
+        wpv.session_ordering_logic,
+        wpv.duration_type,
+        wpv.duration_weeks
+    FROM workout_program_versions wpv
+    INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
+    WHERE wpv.id = $1
+        AND wpv.deleted_at IS NULL
+        AND wp.deleted_at IS NULL
+    `;
+    try {
+        const result = await pg.query(query, [workoutProgramVersionId]);
+        return (result.rows[0] as PlanVersionAccessRow) ?? null;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch workout plan version", 500);
+    }
+}
+
+/** True if the user has (or has ever had) an assignment pointing at this exact version. */
+export const userHasAssignmentForVersionRepository = async (
+    userId: string,
+    workoutProgramVersionId: string,
+): Promise<boolean> => {
+    const query = `
+    SELECT 1 FROM user_program_assignments
+    WHERE user_id = $1 AND workout_program_version_id = $2 AND deleted_at IS NULL
+    LIMIT 1
+    `;
+    try {
+        const result = await pg.query(query, [userId, workoutProgramVersionId]);
+        return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to check workout plan access", 500);
+    }
+}
+
+export interface PlanDetailExerciseRow {
+    id: string;
+    workout_program_day_session_id: string;
+    exercise_order: number;
+    target_sets: number | null;
+    min_reps: number | null;
+    max_reps: number | null;
+    target_rir: number | null;
+    rest_seconds: number | null;
+    tempo: string | null;
+    notes: string | null;
+    exercise: {
+        id: string;
+        name: string;
+        slug: string;
+        image_url: string | null;
+        description: string | null;
+    } | null;
+}
+
+export interface PlanDetailSessionRow {
+    id: string;
+    workout_program_day_id: string;
+    name: string;
+    exercises: PlanDetailExerciseRow[];
+}
+
+export interface PlanDetailDayRow {
+    id: string;
+    day_number: number;
+    name: string;
+    sessions: PlanDetailSessionRow[];
+}
+
+/**
+ * Every day (1–7, including empty rest days — this is a "view the whole
+ * plan's config" read, unlike the pick-a-day-to-train flow which hides empty
+ * days) → its sessions → each session's exercises with the full joined
+ * exercise, for the user-facing plan-detail page.
+ */
+export const fetchPlanDetailTreeRepository = async (
+    workoutProgramVersionId: string,
+): Promise<PlanDetailDayRow[]> => {
+    const daysQuery = `
+    SELECT id, day_number, name
+    FROM program_days
+    WHERE workout_program_version_id = $1 AND deleted_at IS NULL
+    ORDER BY day_number ASC
+    `;
+    try {
+        const daysResult = await pg.query(daysQuery, [workoutProgramVersionId]);
+        const days = daysResult.rows as { id: string, day_number: number, name: string }[];
+        if (days.length === 0) return [];
+
+        const sessionsResult = await pg.query(
+            `SELECT id, workout_program_day_id, name
+            FROM program_day_sessions
+            WHERE workout_program_day_id = ANY($1::uuid[]) AND deleted_at IS NULL
+            ORDER BY created_at ASC`,
+            [days.map((d) => d.id)],
+        );
+        const sessions = sessionsResult.rows as { id: string, workout_program_day_id: string, name: string }[];
+
+        const exercisesResult = sessions.length > 0
+            ? await pg.query(
+                `SELECT
+                    wpe.id, wpe.workout_program_day_session_id, wpe.exercise_order,
+                    wpe.target_sets, wpe.min_reps, wpe.max_reps, wpe.target_rir,
+                    wpe.rest_seconds, wpe.tempo, wpe.notes,
+                    e.id AS exercise_id, e.name AS exercise_name, e.slug AS exercise_slug,
+                    e.image_url AS exercise_image_url, e.description AS exercise_description
+                FROM workout_program_exercises wpe
+                LEFT JOIN exercises e ON e.id = wpe.exercise_id
+                WHERE wpe.workout_program_day_session_id = ANY($1::uuid[]) AND wpe.deleted_at IS NULL
+                ORDER BY wpe.exercise_order ASC NULLS LAST`,
+                [sessions.map((s) => s.id)],
+            )
+            : { rows: [] as any[] };
+
+        const exercisesBySession = new Map<string, PlanDetailExerciseRow[]>();
+        for (const row of exercisesResult.rows) {
+            const list = exercisesBySession.get(row.workout_program_day_session_id) ?? [];
+            list.push({
+                id: row.id,
+                workout_program_day_session_id: row.workout_program_day_session_id,
+                exercise_order: row.exercise_order,
+                target_sets: row.target_sets,
+                min_reps: row.min_reps,
+                max_reps: row.max_reps,
+                target_rir: row.target_rir,
+                rest_seconds: row.rest_seconds,
+                tempo: row.tempo,
+                notes: row.notes,
+                exercise: row.exercise_id ? {
+                    id: row.exercise_id,
+                    name: row.exercise_name,
+                    slug: row.exercise_slug,
+                    image_url: row.exercise_image_url,
+                    description: row.exercise_description,
+                } : null,
+            });
+            exercisesBySession.set(row.workout_program_day_session_id, list);
+        }
+
+        const sessionsByDay = new Map<string, PlanDetailSessionRow[]>();
+        for (const session of sessions) {
+            const list = sessionsByDay.get(session.workout_program_day_id) ?? [];
+            list.push({
+                id: session.id,
+                workout_program_day_id: session.workout_program_day_id,
+                name: session.name,
+                exercises: exercisesBySession.get(session.id) ?? [],
+            });
+            sessionsByDay.set(session.workout_program_day_id, list);
+        }
+
+        return days.map((day) => ({
+            id: day.id,
+            day_number: day.day_number,
+            name: day.name,
+            sessions: sessionsByDay.get(day.id) ?? [],
+        }));
+    } catch (error) {
+        console.log(daysQuery);
+        console.log(error);
+        throw new AppError("Failed to fetch workout plan detail", 500);
+    }
+}
+
 export interface UserProgramAssignmentRow {
     id: string;
     user_id: string;
@@ -235,6 +437,89 @@ export const fetchNonEmptyProgramDaySessionsRepository = async (
     }
 }
 
+/** Union of weekdays (1=Mon..7=Sun) that have at least one non-empty training day across the given program versions. */
+export const fetchRequiredWeekdaysRepository = async (
+    workoutProgramVersionIds: string[],
+): Promise<number[]> => {
+    if (workoutProgramVersionIds.length === 0) return [];
+    const query = `
+    SELECT DISTINCT pd.day_number
+    FROM program_days pd
+    WHERE pd.workout_program_version_id = ANY($1::uuid[])
+        AND pd.deleted_at IS NULL
+        AND EXISTS (
+            SELECT 1
+            FROM program_day_sessions pds
+            INNER JOIN workout_program_exercises wpe
+                ON wpe.workout_program_day_session_id = pds.id
+                AND wpe.deleted_at IS NULL
+            WHERE pds.workout_program_day_id = pd.id
+                AND pds.deleted_at IS NULL
+        )
+    `;
+    try {
+        const result = await pg.query(query, [workoutProgramVersionIds]);
+        return result.rows.map((row) => Number(row.day_number));
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch required training weekdays", 500);
+    }
+}
+
+/** Distinct calendar dates (in the given IANA timezone) the user completed a workout, on or after `sinceDate`. */
+export const fetchWorkedOutDatesRepository = async (
+    userId: string,
+    timezone: string,
+    sinceDate: string,
+): Promise<string[]> => {
+    const query = `
+    SELECT DISTINCT (wsess.completed_at AT TIME ZONE $2)::date AS worked_date
+    FROM workout_sessions wsess
+    WHERE wsess.user_id = $1
+        AND wsess.completed_at IS NOT NULL
+        AND wsess.deleted_at IS NULL
+        AND (wsess.completed_at AT TIME ZONE $2)::date >= $3::date
+    `;
+    try {
+        const result = await pg.query(query, [userId, timezone, sinceDate]);
+        return result.rows.map((row) => {
+            const d = row.worked_date as Date;
+            return d.toISOString().slice(0, 10);
+        });
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch workout dates", 500);
+    }
+}
+
+/** Sum of (weight + tool_weight) * reps across non-warmup, non-deleted sets logged on or after `sinceDate` (in the given timezone). */
+export const fetchTonnageSinceRepository = async (
+    userId: string,
+    timezone: string,
+    sinceDate: string,
+): Promise<number> => {
+    const query = `
+    SELECT COALESCE(SUM((COALESCE(ws.weight, 0) + COALESCE(ws.tool_weight, 0)) * COALESCE(ws.reps, 0)), 0) AS total
+    FROM workout_sets ws
+    INNER JOIN workout_sessions wsess ON wsess.id = ws.workout_session_id
+    WHERE wsess.user_id = $1
+        AND ws.deleted_at IS NULL
+        AND wsess.deleted_at IS NULL
+        AND ws.is_warmup = FALSE
+        AND (ws.created_at AT TIME ZONE $2)::date >= $3::date
+    `;
+    try {
+        const result = await pg.query(query, [userId, timezone, sinceDate]);
+        return Number(result.rows[0]?.total ?? 0);
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to compute weekly volume", 500);
+    }
+}
+
 export interface ExerciseHistorySetRow {
     id: string;
     set_order: number;
@@ -253,8 +538,9 @@ export interface ExerciseHistorySessionRow {
     workout_session_id: string;
     started_at: Date;
     plan_name: string;
-    day_name: string;
-    session_name: string;
+    /** Null when this occurrence of the exercise was logged ad-hoc, not as part of an admin-authored day/session. */
+    day_name: string | null;
+    session_name: string | null;
     sets: ExerciseHistorySetRow[];
 }
 
@@ -316,8 +602,8 @@ export const fetchExerciseHistoryRepository = async (data: {
     INNER JOIN workout_program_exercises wpe
         ON wpe.id = ws.workout_program_exercise_id
         AND wpe.exercise_id = $1
-    INNER JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
-    INNER JOIN program_days pd ON pd.id = pds.workout_program_day_id
+    LEFT JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
+    LEFT JOIN program_days pd ON pd.id = pds.workout_program_day_id
     INNER JOIN workout_sessions wsess ON wsess.id = ms.workout_session_id
     INNER JOIN user_program_assignments upa ON upa.id = wsess.program_assignment_id
     INNER JOIN workout_program_versions wpv ON wpv.id = upa.workout_program_version_id
@@ -406,19 +692,35 @@ export const fetchWorkoutSessionsRepository = async (data: {
     INNER JOIN workout_program_versions wpv ON wpv.id = upa.workout_program_version_id
     INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
     LEFT JOIN LATERAL (
+        -- Totals count every logged set regardless of whether it's tied to an
+        -- admin-authored day/session (program exercise) or was added ad-hoc —
+        -- day/session naming below is a separate, best-effort lookup so an
+        -- ad-hoc-only session doesn't get its counts silently dropped.
         SELECT
-            pd.name AS day_name,
-            pds.name AS session_name,
-            COUNT(ws.id) AS total_sets,
-            COUNT(DISTINCT ws.workout_program_exercise_id) AS total_exercises
-        FROM workout_sets ws
-        INNER JOIN workout_program_exercises wpe ON wpe.id = ws.workout_program_exercise_id
-        INNER JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
-        INNER JOIN program_days pd ON pd.id = pds.workout_program_day_id
-        WHERE ws.workout_session_id = wsess.id
-            AND ws.deleted_at IS NULL
-        GROUP BY pd.name, pds.name
-        LIMIT 1
+            day_session.day_name,
+            day_session.session_name,
+            totals.total_sets,
+            totals.total_exercises
+        FROM (
+            SELECT
+                COUNT(ws.id) AS total_sets,
+                COUNT(DISTINCT ws.workout_program_exercise_id) AS total_exercises
+            FROM workout_sets ws
+            WHERE ws.workout_session_id = wsess.id
+                AND ws.deleted_at IS NULL
+        ) totals
+        LEFT JOIN LATERAL (
+            SELECT pd.name AS day_name, pds.name AS session_name
+            FROM workout_sets ws
+            INNER JOIN workout_program_exercises wpe ON wpe.id = ws.workout_program_exercise_id
+            INNER JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
+            INNER JOIN program_days pd ON pd.id = pds.workout_program_day_id
+            WHERE ws.workout_session_id = wsess.id
+                AND ws.deleted_at IS NULL
+            GROUP BY pd.name, pds.name
+            ORDER BY COUNT(*) DESC
+            LIMIT 1
+        ) day_session ON true
     ) day_info ON true
     WHERE wsess.user_id = $1
         AND wsess.deleted_at IS NULL
@@ -521,7 +823,10 @@ export interface WorkoutSessionDetailExerciseRow {
     workout_program_exercise_id: string;
     exercise_id: string;
     exercise_name: string;
-    exercise_order: number;
+    /** Null for an exercise added ad-hoc mid-session — it has no plan-defined ordering. */
+    exercise_order: number | null;
+    /** True if this exercise wasn't part of the admin-authored plan for this session. */
+    is_adhoc: boolean;
     sets: WorkoutSessionDetailSetRow[];
 }
 
@@ -565,6 +870,7 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
         ws.drop_order,
         wpe.id AS workout_program_exercise_id,
         wpe.exercise_order,
+        wpe.workout_program_day_session_id IS NULL AS is_adhoc,
         e.id AS exercise_id,
         e.name AS exercise_name,
         pd.name AS day_name,
@@ -572,10 +878,10 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
     FROM workout_sets ws
     INNER JOIN workout_program_exercises wpe ON wpe.id = ws.workout_program_exercise_id
     INNER JOIN exercises e ON e.id = wpe.exercise_id
-    INNER JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
-    INNER JOIN program_days pd ON pd.id = pds.workout_program_day_id
+    LEFT JOIN program_day_sessions pds ON pds.id = wpe.workout_program_day_session_id
+    LEFT JOIN program_days pd ON pd.id = pds.workout_program_day_id
     WHERE ws.workout_session_id = $1 AND ws.deleted_at IS NULL
-    ORDER BY wpe.exercise_order ASC, ws.set_order ASC, ws.drop_order ASC NULLS FIRST
+    ORDER BY wpe.exercise_order ASC NULLS LAST, ws.set_order ASC, ws.drop_order ASC NULLS FIRST
     `;
     try {
         const [sessionResult, setsResult] = await Promise.all([
@@ -589,11 +895,14 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
         }
 
         const exercisesById = new Map<string, WorkoutSessionDetailExerciseRow>();
+        // A session mixing program-authored and ad-hoc exercises should still
+        // report the real day/session name — don't let a later ad-hoc row's
+        // nulls overwrite a name an earlier row already gave us.
         let dayName: string | null = null;
         let sessionName: string | null = null;
         for (const row of setsResult.rows) {
-            dayName = row.day_name;
-            sessionName = row.session_name;
+            if (row.day_name) dayName = row.day_name;
+            if (row.session_name) sessionName = row.session_name;
             let exercise = exercisesById.get(row.workout_program_exercise_id);
             if (!exercise) {
                 exercise = {
@@ -601,6 +910,7 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
                     exercise_id: row.exercise_id,
                     exercise_name: row.exercise_name,
                     exercise_order: row.exercise_order,
+                    is_adhoc: row.is_adhoc,
                     sets: [],
                 };
                 exercisesById.set(row.workout_program_exercise_id, exercise);
@@ -620,8 +930,9 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
             });
         }
 
+        // Ad-hoc exercises (null exercise_order) sort after all plan-ordered ones.
         const exercises = Array.from(exercisesById.values()).sort(
-            (a, b) => a.exercise_order - b.exercise_order,
+            (a, b) => (a.exercise_order ?? Infinity) - (b.exercise_order ?? Infinity),
         );
 
         return {

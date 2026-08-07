@@ -9,17 +9,24 @@ import { USER_PROGRAM_ASSIGNMENTS_TABLE, UserProgramAssignmentsInterface } from 
 import { WORKOUT_SESSIONS_TABLE, WorkoutSessionsInterface } from "../../../db/schemas/users/workout/workoutSessions.schema.js";
 import { WORKOUT_SETS_TABLE, WorkoutSetsInterface } from "../../../db/schemas/users/workout/workoutSets.schema.js";
 import { WORKOUT_SET_ALARMS_TABLE, WorkoutSetAlarmsInterface } from "../../../db/schemas/users/workout/workoutSetAlarms.schema.js";
+import { USER_HEALTH_PREFERENCES_TABLE, UserHealthPreferencesInterface } from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import {
     fetchActiveAlarmsRepository,
     fetchExerciseHistoryRepository,
     fetchLatestPublicVersionForProgramRepository,
     fetchNonEmptyProgramDaysRepository,
     fetchNonEmptyProgramDaySessionsRepository,
+    fetchPlanVersionForAccessCheckRepository,
+    userHasAssignmentForVersionRepository,
+    fetchPlanDetailTreeRepository,
     fetchPublicWorkoutPlansRepository,
     fetchUserAssignmentsRepository,
     fetchWorkoutSessionsRepository,
     fetchWorkoutSessionDetailRepository,
     fetchOngoingWorkoutSessionRepository,
+    fetchRequiredWeekdaysRepository,
+    fetchWorkedOutDatesRepository,
+    fetchTonnageSinceRepository,
 } from "./users.workout.repository.js";
 import { recordMuscleStimulusForLoggedSets } from "../users.muscleSignals/users.muscleSignals.service.js";
 
@@ -187,6 +194,49 @@ export const deactivateWorkoutPlanService = async (data: {
     }) as UserProgramAssignmentsInterface;
 }
 
+/**
+ * Full read-only configuration of one program version — every day (1–7,
+ * including empty rest days), every session, every exercise. Distinct from
+ * the pick-a-day-to-train flow below, which deliberately hides empty days.
+ *
+ * Access: either the version is currently public (Browse Plans), or the
+ * user has (or once had) an assignment pointing at this exact version (My
+ * Plans) — covers a plan the admin later made private after the user
+ * already added it.
+ */
+export const getPlanDetailService = async (data: {
+    userId?: string,
+    workoutProgramVersionId?: string,
+}) => {
+    const { userId, workoutProgramVersionId } = data;
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    if (!workoutProgramVersionId) {
+        throw new AppError("workout_program_version_id is required", 400);
+    }
+    if (!isValidUUID(workoutProgramVersionId)) {
+        throw new AppError("Invalid workout_program_version_id", 400);
+    }
+
+    const planVersion = await fetchPlanVersionForAccessCheckRepository(workoutProgramVersionId);
+    if (!planVersion) {
+        throw new AppError("Workout plan not found", 404);
+    }
+
+    const isPublic = planVersion.program_visibility === "public" && planVersion.version_visibility === "public";
+    if (!isPublic) {
+        const owns = await userHasAssignmentForVersionRepository(userId, workoutProgramVersionId);
+        if (!owns) {
+            throw new AppError("You don't have access to this workout plan", 403);
+        }
+    }
+
+    const program_days = await fetchPlanDetailTreeRepository(workoutProgramVersionId);
+
+    return { ...planVersion, program_days };
+}
+
 // ---------------------------------------------------------------------------
 // Day / session / exercise browsing
 // ---------------------------------------------------------------------------
@@ -337,6 +387,72 @@ export const startWorkoutSessionService = async (data: {
             started_at: new Date(),
         },
     }) as WorkoutSessionsInterface;
+}
+
+/**
+ * Adds an exercise to a live session that isn't part of the admin-authored
+ * plan (e.g. a planned machine was occupied). Creates a session-scoped
+ * `workout_program_exercises` row with no day/session/order — set logging,
+ * history, and alarms all key off `workout_program_exercise_id` with no
+ * day/session scoping, so nothing else needs to change to support it.
+ */
+export const addAdhocExerciseToSessionService = async (data: {
+    userId?: string,
+    sessionId?: string,
+    exercise_id?: string,
+}) => {
+    const { userId, sessionId, exercise_id } = data;
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    if (!sessionId) {
+        throw new AppError("Session ID is required", 400);
+    }
+    if (!exercise_id) {
+        throw new AppError("exercise_id is required", 400);
+    }
+    if (!isValidUUID(exercise_id)) {
+        throw new AppError("Invalid exercise_id", 400);
+    }
+
+    const session = await getOwnedWorkoutSessionOrThrow(userId, sessionId);
+    if (session.completed_at) {
+        throw new AppError("This workout session has already finished", 400);
+    }
+
+    const assignment = await fetchOneFromTable({
+        table: USER_PROGRAM_ASSIGNMENTS_TABLE,
+        where: [{ field: "id", operator: "=", value: session.program_assignment_id }],
+    }) as UserProgramAssignmentsInterface | null;
+    if (!assignment) {
+        throw new AppError("Workout plan selection not found", 404);
+    }
+
+    const exercise = await fetchOneFromTable({
+        table: EXERCISES_TABLE,
+        where: [{ field: "id", operator: "=", value: exercise_id }],
+    }) as ExercisesInterface | null;
+    if (!exercise) {
+        throw new AppError("Exercise not found", 404);
+    }
+
+    const programExercise = await addOneInTable({
+        table: WORKOUT_PROGRAM_EXERCISES_TABLE,
+        data: {
+            workout_program_version_id: assignment.workout_program_version_id,
+            workout_session_id: session.id,
+            workout_program_day_session_id: null,
+            exercise_id,
+            exercise_order: null,
+            target_sets: null,
+            min_reps: null,
+            max_reps: null,
+            added_by_user_id: userId,
+            visibility: "private",
+        },
+    }) as WorkoutProgramExercisesInterface;
+
+    return { ...programExercise, exercise };
 }
 
 export const getSessionSetsService = async (data: {
@@ -945,4 +1061,159 @@ export const discardAlarmService = async (data: {
         where: [{ field: "id", operator: "=", value: alarmId }],
         useSoftDelete: false,
     }) as WorkoutSetAlarmsInterface;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard stats — streak, weekly consistency, weekly volume
+// ---------------------------------------------------------------------------
+
+const DEFAULT_TIMEZONE = "UTC";
+const DEFAULT_WEIGHT_UNITS = "kg";
+
+const getUserHealthPreferencesOrDefault = async (
+    userId: string,
+): Promise<{ timezone: string, weight_units: string }> => {
+    const prefs = await fetchOneFromTable({
+        table: USER_HEALTH_PREFERENCES_TABLE,
+        where: [{ field: "user_id", operator: "=", value: userId }],
+        select: ["timezone", "weight_units"],
+    }) as UserHealthPreferencesInterface | null;
+    return {
+        timezone: prefs?.timezone || DEFAULT_TIMEZONE,
+        weight_units: prefs?.weight_units || DEFAULT_WEIGHT_UNITS,
+    };
+}
+
+/** "YYYY-MM-DD" for `date` as seen in `timezone` — the user's local calendar day. */
+const localDateString = (date: Date, timezone: string): string => {
+    try {
+        return new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(date);
+    } catch {
+        // Invalid/unknown IANA zone stored on the user's prefs — fall back to UTC rather than throw.
+        return new Intl.DateTimeFormat("en-CA", {
+            timeZone: DEFAULT_TIMEZONE,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).format(date);
+    }
+}
+
+/** 1=Mon..7=Sun for a "YYYY-MM-DD" date string. */
+const isoWeekdayOf = (dateStr: string): number => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    return day === 0 ? 7 : day;
+}
+
+const addDays = (dateStr: string, delta: number): string => {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + delta);
+    return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * Current streak + this week's trained/not-trained days.
+ *
+ * Streak = consecutive calendar days, walking back from today, that were
+ * "required" (that weekday is a non-empty training day for *any* currently
+ * active plan) and "satisfied" (a workout was completed that day, under any
+ * plan). A day required by overlapping plans only counts once. Non-required
+ * days don't break the streak. Today, if required but not yet satisfied,
+ * doesn't break the streak either — it's just not counted yet.
+ *
+ * Known limitation: there's no history of which plans were active on a past
+ * date, only current `is_active` state — the walk applies the user's
+ * *current* active plans' schedules retroactively across the whole
+ * lookback window. A future "mark a sick/injury day" feature would need its
+ * own exceptions table; not built here.
+ */
+export const getWorkoutConsistencyService = async (userId?: string) => {
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+
+    const { timezone } = await getUserHealthPreferencesOrDefault(userId);
+    const activeAssignments = await fetchUserAssignmentsRepository({ userId, activeOnly: true });
+
+    const todayStr = localDateString(new Date(), timezone);
+    const weekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
+    const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStartStr, i));
+
+    let earliestStartStr: string | null = null;
+    for (const a of activeAssignments) {
+        if (!a.started_at) continue;
+        const s = localDateString(new Date(a.started_at), timezone);
+        if (!earliestStartStr || s < earliestStartStr) earliestStartStr = s;
+    }
+
+    const sinceStr = earliestStartStr && earliestStartStr < weekStartStr ? earliestStartStr : weekStartStr;
+    const workedOutDates = new Set(await fetchWorkedOutDatesRepository(userId, timezone, sinceStr));
+
+    const week = weekDates.map((date) => ({ date, trained: workedOutDates.has(date) }));
+
+    if (activeAssignments.length === 0 || !earliestStartStr) {
+        return { current_streak: 0, week };
+    }
+
+    const requiredWeekdays = new Set(
+        await fetchRequiredWeekdaysRepository(activeAssignments.map((a) => a.workout_program_version_id)),
+    );
+
+    let streak = 0;
+    let cursor = todayStr;
+    let isToday = true;
+    while (cursor >= earliestStartStr) {
+        if (requiredWeekdays.has(isoWeekdayOf(cursor))) {
+            if (workedOutDates.has(cursor)) {
+                streak++;
+            } else if (!isToday) {
+                break;
+            }
+        }
+        cursor = addDays(cursor, -1);
+        isToday = false;
+    }
+
+    return { current_streak: streak, week };
+}
+
+/**
+ * Tonnage for the current calendar week: Σ (weight + tool_weight) × reps
+ * across non-warmup sets. See workout-gym-api/algorithms/weekly-volume.md
+ * for the full formula and its unit-handling caveat.
+ */
+export const getWeeklyVolumeService = async (userId?: string) => {
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+
+    const { timezone, weight_units } = await getUserHealthPreferencesOrDefault(userId);
+    const todayStr = localDateString(new Date(), timezone);
+    const weekStartStr = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
+
+    const weekly_volume = await fetchTonnageSinceRepository(userId, timezone, weekStartStr);
+    return { weekly_volume, weight_units };
+}
+
+export const getDashboardStatsService = async (userId?: string) => {
+    if (!userId) {
+        throw new AppError("User ID is required", 400);
+    }
+    const [consistency, volume] = await Promise.all([
+        getWorkoutConsistencyService(userId),
+        getWeeklyVolumeService(userId),
+    ]);
+    return {
+        current_streak: consistency.current_streak,
+        week: consistency.week,
+        weekly_volume: volume.weekly_volume,
+        weight_units: volume.weight_units,
+    };
 }

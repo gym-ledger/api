@@ -4,14 +4,16 @@ export const WORKOUT_PROGRAM_EXERCISES_TABLE = "workout_program_exercises";
 
 export interface WorkoutProgramExercisesInterface {
     id: string;
-    workout_program_day_session_id: string;
+    workout_program_day_session_id: string | null;
     workout_program_version_id: string;
+    /** Set only for a user-added ad-hoc exercise, scoping it to the one live session it was created in. */
+    workout_session_id: string | null;
     exercise_id: string | null;
     exercise: ExercisesInterface | null;
-    exercise_order: number;
-    target_sets: number;
-    min_reps: number;
-    max_reps: number;
+    exercise_order: number | null;
+    target_sets: number | null;
+    min_reps: number | null;
+    max_reps: number | null;
     target_rir: number | null;
     rest_seconds: number | null;
     tempo: string | null;

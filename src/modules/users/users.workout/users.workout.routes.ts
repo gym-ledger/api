@@ -7,10 +7,12 @@ import {
     listActiveWorkoutPlans,
     selectWorkoutPlan,
     deactivateWorkoutPlan,
+    getPlanDetail,
     listDaysForAssignment,
     listSessionsForDay,
     listExercisesForSession,
     startWorkoutSession,
+    addAdhocExerciseToSession,
     getSessionSets,
     finishWorkoutSession,
     getOngoingWorkoutSession,
@@ -22,6 +24,7 @@ import {
     getWorkoutSessionDetail,
     listActiveAlarms,
     discardAlarm,
+    getDashboardStats,
 } from "./users.workout.controller.js";
 
 const usersWorkoutRouter = Router();
@@ -31,6 +34,7 @@ usersWorkoutRouter.get("/plans/public", verifyUserToken, asyncHandler(listPublic
 usersWorkoutRouter.get("/plans/mine", verifyUserToken, asyncHandler(listMyWorkoutPlans));
 usersWorkoutRouter.post("/plans/select", verifyUserToken, asyncHandler(selectWorkoutPlan));
 usersWorkoutRouter.delete("/plans/:assignmentId", verifyUserToken, asyncHandler(deactivateWorkoutPlan));
+usersWorkoutRouter.get("/plans/:workoutProgramVersionId/detail", verifyUserToken, asyncHandler(getPlanDetail));
 
 // Day / session / exercise browsing
 usersWorkoutRouter.get("/assignments/active", verifyUserToken, asyncHandler(listActiveWorkoutPlans));
@@ -40,6 +44,7 @@ usersWorkoutRouter.get("/assignments/:assignmentId/days/:dayId/sessions/:session
 
 // Session lifecycle
 usersWorkoutRouter.post("/sessions/start", verifyUserToken, asyncHandler(startWorkoutSession));
+usersWorkoutRouter.post("/sessions/:sessionId/adhoc-exercise", verifyUserToken, asyncHandler(addAdhocExerciseToSession));
 usersWorkoutRouter.get("/sessions/ongoing", verifyUserToken, asyncHandler(getOngoingWorkoutSession));
 usersWorkoutRouter.get("/sessions/:sessionId/sets", verifyUserToken, asyncHandler(getSessionSets));
 usersWorkoutRouter.post("/sessions/:sessionId/finish", verifyUserToken, asyncHandler(finishWorkoutSession));
@@ -59,5 +64,8 @@ usersWorkoutRouter.get("/sessions/:sessionId/detail", verifyUserToken, asyncHand
 // Dashboard alarms
 usersWorkoutRouter.get("/alarms/active", verifyUserToken, asyncHandler(listActiveAlarms));
 usersWorkoutRouter.post("/alarms/:alarmId/discard", verifyUserToken, asyncHandler(discardAlarm));
+
+// Dashboard stats
+usersWorkoutRouter.get("/stats/dashboard", verifyUserToken, asyncHandler(getDashboardStats));
 
 export default usersWorkoutRouter;
