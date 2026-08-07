@@ -151,6 +151,90 @@ export const fetchUserAssignmentsRepository = async (data: {
     }
 }
 
+export interface ProgramDayRow {
+    id: string;
+    workout_program_id: string;
+    workout_program_version_id: string;
+    day_number: number;
+    name: string;
+    visibility: string;
+    created_at: Date;
+    updated_at: Date;
+}
+
+/**
+ * Days for a program version, excluding any day with no session that has at
+ * least one exercise — an empty day (e.g. a rest-day placeholder row) isn't
+ * a workout day and shouldn't be offered as one to pick.
+ */
+export const fetchNonEmptyProgramDaysRepository = async (
+    workoutProgramVersionId: string,
+): Promise<ProgramDayRow[]> => {
+    const query = `
+    SELECT pd.id, pd.workout_program_id, pd.workout_program_version_id, pd.day_number, pd.name,
+           pd.visibility, pd.created_at, pd.updated_at
+    FROM program_days pd
+    WHERE pd.workout_program_version_id = $1
+        AND pd.deleted_at IS NULL
+        AND EXISTS (
+            SELECT 1
+            FROM program_day_sessions pds
+            INNER JOIN workout_program_exercises wpe
+                ON wpe.workout_program_day_session_id = pds.id
+                AND wpe.deleted_at IS NULL
+            WHERE pds.workout_program_day_id = pd.id
+                AND pds.deleted_at IS NULL
+        )
+    ORDER BY pd.day_number ASC
+    `;
+    try {
+        const result = await pg.query(query, [workoutProgramVersionId]);
+        return result.rows as ProgramDayRow[];
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch program days", 500);
+    }
+}
+
+export interface ProgramDaySessionRow {
+    id: string;
+    workout_program_day_id: string;
+    workout_program_version_id: string;
+    name: string;
+    visibility: string;
+    created_at: Date;
+    updated_at: Date;
+}
+
+/** Sessions for a day, excluding any session with zero exercises. */
+export const fetchNonEmptyProgramDaySessionsRepository = async (
+    workoutProgramDayId: string,
+): Promise<ProgramDaySessionRow[]> => {
+    const query = `
+    SELECT pds.id, pds.workout_program_day_id, pds.workout_program_version_id, pds.name,
+           pds.visibility, pds.created_at, pds.updated_at
+    FROM program_day_sessions pds
+    WHERE pds.workout_program_day_id = $1
+        AND pds.deleted_at IS NULL
+        AND EXISTS (
+            SELECT 1
+            FROM workout_program_exercises wpe
+            WHERE wpe.workout_program_day_session_id = pds.id
+                AND wpe.deleted_at IS NULL
+        )
+    ORDER BY pds.created_at ASC
+    `;
+    try {
+        const result = await pg.query(query, [workoutProgramDayId]);
+        return result.rows as ProgramDaySessionRow[];
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch program day sessions", 500);
+    }
+}
+
 export interface ExerciseHistorySetRow {
     id: string;
     set_order: number;
@@ -282,6 +366,7 @@ export const fetchExerciseHistoryRepository = async (data: {
 
 export interface WorkoutSessionListRow {
     id: string;
+    program_assignment_id: string;
     started_at: Date;
     completed_at: Date | null;
     plan_name: string;
@@ -307,6 +392,7 @@ export const fetchWorkoutSessionsRepository = async (data: {
     const query = `
     SELECT
         wsess.id,
+        wsess.program_assignment_id,
         wsess.started_at,
         wsess.completed_at,
         wp.name AS plan_name,
@@ -345,6 +431,7 @@ export const fetchWorkoutSessionsRepository = async (data: {
         return {
             data: result.rows.map((row) => ({
                 id: row.id,
+                program_assignment_id: row.program_assignment_id,
                 started_at: row.started_at,
                 completed_at: row.completed_at,
                 plan_name: row.plan_name,

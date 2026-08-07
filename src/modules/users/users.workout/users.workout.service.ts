@@ -13,6 +13,8 @@ import {
     fetchActiveAlarmsRepository,
     fetchExerciseHistoryRepository,
     fetchLatestPublicVersionForProgramRepository,
+    fetchNonEmptyProgramDaysRepository,
+    fetchNonEmptyProgramDaySessionsRepository,
     fetchPublicWorkoutPlansRepository,
     fetchUserAssignmentsRepository,
     fetchWorkoutSessionsRepository,
@@ -202,11 +204,7 @@ export const listDaysForAssignmentService = async (data: {
     }
     const assignment = await getOwnedAssignmentOrThrow(userId, assignmentId);
 
-    return await fetchManyFromTable({
-        table: PROGRAM_DAYS_TABLE,
-        where: [{ field: "workout_program_version_id", operator: "=", value: assignment.workout_program_version_id }],
-        sortBy: { day_number: "asc" },
-    }) as ProgramDaysInterface[];
+    return await fetchNonEmptyProgramDaysRepository(assignment.workout_program_version_id);
 }
 
 export const listSessionsForDayService = async (data: {
@@ -227,10 +225,7 @@ export const listSessionsForDayService = async (data: {
     const assignment = await getOwnedAssignmentOrThrow(userId, assignmentId);
     const day = await getOwnedProgramDayOrThrow(assignment, dayId);
 
-    return await fetchManyFromTable({
-        table: PROGRAM_DAY_SESSIONS_TABLE,
-        where: [{ field: "workout_program_day_id", operator: "=", value: day.id }],
-    }) as ProgramDaySessionsInterface[];
+    return await fetchNonEmptyProgramDaySessionsRepository(day.id);
 }
 
 export const listExercisesForSessionService = async (data: {
