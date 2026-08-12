@@ -690,6 +690,7 @@ export interface ExerciseHistorySetRow {
     alarm_message: string | null;
     parent_set_id: string | null;
     drop_order: number | null;
+    created_at: Date;
 }
 
 export interface ExerciseHistorySessionRow {
@@ -754,7 +755,8 @@ export const fetchExerciseHistoryRepository = async (data: {
         ws.discomfort_notes,
         wsa.message AS alarm_message,
         ws.parent_set_id,
-        ws.drop_order
+        ws.drop_order,
+        ws.created_at
     FROM matching_sessions ms
     INNER JOIN workout_sets ws ON ws.workout_session_id = ms.workout_session_id
     INNER JOIN workout_program_exercises wpe
@@ -798,6 +800,7 @@ export const fetchExerciseHistoryRepository = async (data: {
                 alarm_message: row.alarm_message,
                 parent_set_id: row.parent_set_id,
                 drop_order: row.drop_order,
+                created_at: row.created_at,
             });
         }
         return Array.from(sessionsById.values());
