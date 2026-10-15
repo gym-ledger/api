@@ -887,6 +887,7 @@ export interface ExerciseHistorySetRow {
     effort: string | null;
     discomfort_notes: string | null;
     alarm_message: string | null;
+    is_warmup: boolean;
     parent_set_id: string | null;
     drop_order: number | null;
     created_at: Date;
@@ -953,6 +954,7 @@ export const fetchExerciseHistoryRepository = async (data: {
         ws.effort,
         ws.discomfort_notes,
         wsa.message AS alarm_message,
+        ws.is_warmup,
         ws.parent_set_id,
         ws.drop_order,
         ws.created_at
@@ -997,6 +999,7 @@ export const fetchExerciseHistoryRepository = async (data: {
                 effort: row.effort,
                 discomfort_notes: row.discomfort_notes,
                 alarm_message: row.alarm_message,
+                is_warmup: row.is_warmup,
                 parent_set_id: row.parent_set_id,
                 drop_order: row.drop_order,
                 created_at: row.created_at,
