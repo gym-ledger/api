@@ -20,6 +20,12 @@ export const listWorkoutProgramsForAdminService = async (data: { page?: number, 
                 operator: "ILIKE",
                 value: `%${search}%`,
             },
+            // Users' personal copies of plans live in the same table; the
+            // admin catalogue is only the admin-authored programs.
+            {
+                operator: "RAW",
+                raw: "added_by_admin_user_id IS NOT NULL",
+            },
         ],
         limit,
         page,

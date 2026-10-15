@@ -1,5 +1,6 @@
 import { pg } from "../../../infrastructure/postgres/index.js";
 import { AppError } from "../../../shared/errors/AppError.js";
+import { UserProgramAssignmentsInterface } from "../../../db/schemas/users/workout/userProgramAssignments.schema.js";
 
 export interface PublicWorkoutPlanRow {
     workout_program_id: string;
@@ -108,6 +109,11 @@ export interface PlanVersionAccessRow {
     session_ordering_logic: string;
     duration_type: string;
     duration_weeks: number;
+    /** The user who owns this version (a user's copy of a plan); null for an admin-authored one. */
+    version_owner_user_id: string | null;
+    source_workout_program_id: string | null;
+    source_workout_program_version_id: string | null;
+    source_version_number: number | null;
 }
 
 /** A program version + its parent program, regardless of visibility — the caller decides access. */
@@ -129,9 +135,14 @@ export const fetchPlanVersionForAccessCheckRepository = async (
         wpv.split_type,
         wpv.session_ordering_logic,
         wpv.duration_type,
-        wpv.duration_weeks
+        wpv.duration_weeks,
+        wpv.added_by_user_id AS version_owner_user_id,
+        wp.source_workout_program_id,
+        wpv.source_workout_program_version_id,
+        src.version_number AS source_version_number
     FROM workout_program_versions wpv
     INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
+    LEFT JOIN workout_program_versions src ON src.id = wpv.source_workout_program_version_id
     WHERE wpv.id = $1
         AND wpv.deleted_at IS NULL
         AND wp.deleted_at IS NULL
@@ -309,6 +320,10 @@ export interface UserProgramAssignmentRow {
     training_days: number;
     split_type: string;
     workout_program_id: string;
+    /** The admin-authored program this plan was copied from, if any. */
+    source_workout_program_id: string | null;
+    /** True when the plan is the user's own copy, so its exercises can be edited. */
+    is_editable: boolean;
     created_at: Date;
     updated_at: Date;
 }
@@ -330,11 +345,13 @@ export const fetchUserAssignmentsRepository = async (data: {
         upa.created_at,
         upa.updated_at,
         wp.id AS workout_program_id,
+        wp.source_workout_program_id,
         wp.name AS program_name,
         wpv.version_name,
         wpv.version_number,
         wpv.training_days,
-        wpv.split_type
+        wpv.split_type,
+        (wpv.added_by_user_id IS NOT NULL AND wpv.added_by_user_id = upa.user_id) AS is_editable
     FROM user_program_assignments upa
     INNER JOIN workout_program_versions wpv ON wpv.id = upa.workout_program_version_id
     INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
@@ -350,6 +367,188 @@ export const fetchUserAssignmentsRepository = async (data: {
         console.log(query);
         console.log(error);
         throw new AppError("Failed to fetch workout plan selections", 500);
+    }
+}
+
+/**
+ * Gives the user their own copy of a program version (see the
+ * `fork_workout_program_version` SQL function) and selects it, in one
+ * statement so a failed selection never leaves an orphaned copy behind.
+ */
+export const forkAndAssignProgramVersionRepository = async (
+    sourceVersionId: string,
+    userId: string,
+): Promise<UserProgramAssignmentsInterface> => {
+    const query = `
+    INSERT INTO user_program_assignments (user_id, workout_program_version_id, started_at, is_active)
+    VALUES ($2, fork_workout_program_version($1, $2, NULL), NOW(), TRUE)
+    RETURNING *
+    `;
+    try {
+        const result = await pg.query(query, [sourceVersionId, userId]);
+        return result.rows[0] as UserProgramAssignmentsInterface;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to add workout plan", 500);
+    }
+}
+
+/**
+ * Replaces the plan behind an assignment with a fresh copy of
+ * `sourceVersionId`, added as the next version of the user's own program.
+ * The old copy is soft-deleted; sets already logged against it keep their
+ * rows, so history is unaffected.
+ */
+export const resetAssignmentToSourceVersionRepository = async (data: {
+    assignmentId: string,
+    userId: string,
+    userProgramId: string,
+    currentVersionId: string,
+    sourceVersionId: string,
+}): Promise<UserProgramAssignmentsInterface> => {
+    const { assignmentId, userId, userProgramId, currentVersionId, sourceVersionId } = data;
+    const client = await pg.connect();
+    try {
+        await client.query("BEGIN");
+        const forked = await client.query(
+            `SELECT fork_workout_program_version($1, $2, $3) AS id`,
+            [sourceVersionId, userId, userProgramId],
+        );
+        const updated = await client.query(
+            `UPDATE user_program_assignments
+            SET workout_program_version_id = $1,
+                current_program_day_id = NULL,
+                current_program_day_session_id = NULL
+            WHERE id = $2
+            RETURNING *`,
+            [forked.rows[0].id, assignmentId],
+        );
+        await client.query(
+            `UPDATE workout_program_versions SET deleted_at = NOW() WHERE id = $1`,
+            [currentVersionId],
+        );
+        await client.query("COMMIT");
+        return updated.rows[0] as UserProgramAssignmentsInterface;
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.log(error);
+        throw new AppError("Failed to update workout plan", 500);
+    } finally {
+        client.release();
+    }
+}
+
+/** The user's selection of their copy of `sourceProgramId`, active one first, or null. */
+export const fetchUserAssignmentForSourceProgramRepository = async (
+    userId: string,
+    sourceProgramId: string,
+): Promise<UserProgramAssignmentsInterface | null> => {
+    const query = `
+    SELECT upa.*
+    FROM user_program_assignments upa
+    INNER JOIN workout_program_versions wpv ON wpv.id = upa.workout_program_version_id
+    INNER JOIN workout_programs wp ON wp.id = wpv.workout_program_id
+    WHERE upa.user_id = $1
+        AND upa.deleted_at IS NULL
+        AND wpv.deleted_at IS NULL
+        AND wp.source_workout_program_id = $2
+    ORDER BY upa.is_active DESC, upa.created_at DESC
+    LIMIT 1
+    `;
+    try {
+        const result = await pg.query(query, [userId, sourceProgramId]);
+        return (result.rows[0] as UserProgramAssignmentsInterface) ?? null;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch workout plan selection", 500);
+    }
+}
+
+/**
+ * Rewrites `exercise_order` for a plan session's exercises to match
+ * `orderedIds` (1-based). Done in two passes inside a transaction: the
+ * (session, version, order) unique index is checked row by row, so swapping
+ * two orders directly would collide midway.
+ */
+export const reorderPlanSessionExercisesRepository = async (
+    daySessionId: string,
+    orderedIds: string[],
+): Promise<void> => {
+    const client = await pg.connect();
+    try {
+        await client.query("BEGIN");
+        await client.query(
+            `UPDATE workout_program_exercises
+            SET exercise_order = -exercise_order
+            WHERE workout_program_day_session_id = $1 AND deleted_at IS NULL`,
+            [daySessionId],
+        );
+        await client.query(
+            `UPDATE workout_program_exercises wpe
+            SET exercise_order = o.position
+            FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, position)
+            WHERE wpe.id = o.id
+                AND wpe.workout_program_day_session_id = $1
+                AND wpe.deleted_at IS NULL`,
+            [daySessionId, orderedIds],
+        );
+        await client.query("COMMIT");
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.log(error);
+        throw new AppError("Failed to reorder exercises", 500);
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * For every exercise added to the plan during `workoutSessionId` ("all
+ * future sessions"), sets its planned sets/reps from what was logged in that
+ * workout: target sets = working (non-warmup) sets, rep range = min–max reps
+ * across them, and a note when drop sets were done. Exercises with no
+ * working sets logged are left as they are. Safe to re-run — sets synced
+ * late from an offline queue just refine the result.
+ */
+export const applyPerformedTargetsRepository = async (workoutSessionId: string): Promise<void> => {
+    const query = `
+    WITH performed AS (
+        SELECT
+            wpe.id,
+            COUNT(*) FILTER (WHERE ws.parent_set_id IS NULL AND ws.is_warmup = FALSE) AS work_sets,
+            MIN(ws.reps) FILTER (WHERE ws.parent_set_id IS NULL AND ws.is_warmup = FALSE) AS min_reps,
+            MAX(ws.reps) FILTER (WHERE ws.parent_set_id IS NULL AND ws.is_warmup = FALSE) AS max_reps,
+            COUNT(DISTINCT ws.parent_set_id) AS sets_with_drops
+        FROM workout_program_exercises wpe
+        INNER JOIN workout_sets ws
+            ON ws.workout_program_exercise_id = wpe.id
+            AND ws.workout_session_id = $1
+            AND ws.deleted_at IS NULL
+        WHERE wpe.targets_from_workout_session_id = $1
+            AND wpe.deleted_at IS NULL
+        GROUP BY wpe.id
+    )
+    UPDATE workout_program_exercises wpe
+    SET target_sets = p.work_sets,
+        min_reps = p.min_reps,
+        max_reps = p.max_reps,
+        notes = CASE
+            WHEN p.sets_with_drops = 0 THEN NULL
+            WHEN p.sets_with_drops >= p.work_sets THEN 'Drop sets after every set'
+            ELSE format('Drop sets after %s of %s sets', p.sets_with_drops, p.work_sets)
+        END
+    FROM performed p
+    WHERE wpe.id = p.id
+        AND p.work_sets > 0
+    `;
+    try {
+        await pg.query(query, [workoutSessionId]);
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to save planned sets for added exercises", 500);
     }
 }
 

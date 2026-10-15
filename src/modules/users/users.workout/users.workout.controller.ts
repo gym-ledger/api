@@ -6,6 +6,13 @@ import {
     listActiveWorkoutPlansService,
     selectWorkoutPlanService,
     deactivateWorkoutPlanService,
+    activateWorkoutPlanService,
+    resetWorkoutPlanToSourceService,
+    addPlanExerciseService,
+    updatePlanExerciseService,
+    removePlanExerciseService,
+    reorderPlanExercisesService,
+    type PlanExerciseTargetsInput,
     getPlanDetailService,
     listDaysForAssignmentService,
     listSessionsForDayService,
@@ -63,6 +70,95 @@ export const selectWorkoutPlan = async (req: Request, res: Response, next: NextF
             workout_program_id: req.body.workout_program_id,
         });
         return responseSend(res, 200, "Workout plan selected successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const activateWorkoutPlan = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await activateWorkoutPlanService({
+            userId: req.userId,
+            assignmentId: req.params.assignmentId as string,
+        });
+        return responseSend(res, 200, "Workout plan reactivated successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const resetWorkoutPlanToSource = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await resetWorkoutPlanToSourceService({
+            userId: req.userId,
+            assignmentId: req.params.assignmentId as string,
+        });
+        return responseSend(res, 200, "Workout plan updated to the latest version", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+const planExerciseTargetsFromBody = (body: Record<string, unknown>): PlanExerciseTargetsInput => ({
+    target_sets: body.target_sets,
+    min_reps: body.min_reps,
+    max_reps: body.max_reps,
+    target_rir: body.target_rir,
+    rest_seconds: body.rest_seconds,
+    notes: body.notes,
+});
+
+export const addPlanExercise = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await addPlanExerciseService({
+            userId: req.userId,
+            workoutProgramVersionId: req.params.workoutProgramVersionId as string,
+            daySessionId: req.params.daySessionId as string,
+            exercise_id: req.body.exercise_id,
+            targets: planExerciseTargetsFromBody(req.body),
+        });
+        return responseSend(res, 200, "Exercise added to plan successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const updatePlanExercise = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await updatePlanExerciseService({
+            userId: req.userId,
+            workoutProgramVersionId: req.params.workoutProgramVersionId as string,
+            planExerciseId: req.params.planExerciseId as string,
+            targets: planExerciseTargetsFromBody(req.body),
+        });
+        return responseSend(res, 200, "Plan exercise updated successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const removePlanExercise = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await removePlanExerciseService({
+            userId: req.userId,
+            workoutProgramVersionId: req.params.workoutProgramVersionId as string,
+            planExerciseId: req.params.planExerciseId as string,
+        });
+        return responseSend(res, 200, "Exercise removed from plan successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const reorderPlanExercises = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await reorderPlanExercisesService({
+            userId: req.userId,
+            workoutProgramVersionId: req.params.workoutProgramVersionId as string,
+            daySessionId: req.params.daySessionId as string,
+            exercise_ids: req.body.exercise_ids,
+        });
+        return responseSend(res, 200, "Plan exercises reordered successfully", data);
     } catch (error) {
         next(error);
     }
@@ -155,6 +251,8 @@ export const addAdhocExerciseToSession = async (req: Request, res: Response, nex
             userId: req.userId,
             sessionId: req.params.sessionId as string,
             exercise_id: req.body.exercise_id,
+            scope: req.body.scope,
+            program_day_session_id: req.body.program_day_session_id,
         });
         return responseSend(res, 200, "Exercise added to session successfully", data);
     } catch (error) {

@@ -18,6 +18,11 @@ export interface WorkoutProgramExercisesInterface {
     rest_seconds: number | null;
     tempo: string | null;
     notes: string | null;
+    /**
+     * Set when the user added this exercise to their plan mid-workout: its
+     * planned sets/reps are taken from what was logged in that workout.
+     */
+    targets_from_workout_session_id: string | null;
     added_by_admin_user_id: string | null;
     added_by_user_id: string | null;
     visibility: string;

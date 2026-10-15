@@ -7,6 +7,12 @@ import {
     listActiveWorkoutPlans,
     selectWorkoutPlan,
     deactivateWorkoutPlan,
+    activateWorkoutPlan,
+    resetWorkoutPlanToSource,
+    addPlanExercise,
+    updatePlanExercise,
+    removePlanExercise,
+    reorderPlanExercises,
     getPlanDetail,
     listDaysForAssignment,
     listSessionsForDay,
@@ -36,7 +42,15 @@ usersWorkoutRouter.get("/plans/public", verifyUserToken, asyncHandler(listPublic
 usersWorkoutRouter.get("/plans/mine", verifyUserToken, asyncHandler(listMyWorkoutPlans));
 usersWorkoutRouter.post("/plans/select", verifyUserToken, asyncHandler(selectWorkoutPlan));
 usersWorkoutRouter.delete("/plans/:assignmentId", verifyUserToken, asyncHandler(deactivateWorkoutPlan));
+usersWorkoutRouter.post("/plans/:assignmentId/activate", verifyUserToken, asyncHandler(activateWorkoutPlan));
+usersWorkoutRouter.post("/plans/:assignmentId/reset-to-source", verifyUserToken, asyncHandler(resetWorkoutPlanToSource));
 usersWorkoutRouter.get("/plans/:workoutProgramVersionId/detail", verifyUserToken, asyncHandler(getPlanDetail));
+
+// Plan editing (the user's own copy of a plan)
+usersWorkoutRouter.post("/plans/:workoutProgramVersionId/sessions/:daySessionId/exercises", verifyUserToken, asyncHandler(addPlanExercise));
+usersWorkoutRouter.put("/plans/:workoutProgramVersionId/sessions/:daySessionId/exercise-order", verifyUserToken, asyncHandler(reorderPlanExercises));
+usersWorkoutRouter.put("/plans/:workoutProgramVersionId/exercises/:planExerciseId", verifyUserToken, asyncHandler(updatePlanExercise));
+usersWorkoutRouter.delete("/plans/:workoutProgramVersionId/exercises/:planExerciseId", verifyUserToken, asyncHandler(removePlanExercise));
 
 // Day / session / exercise browsing
 usersWorkoutRouter.get("/assignments/active", verifyUserToken, asyncHandler(listActiveWorkoutPlans));

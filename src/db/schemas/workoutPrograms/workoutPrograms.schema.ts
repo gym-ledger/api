@@ -15,6 +15,9 @@ export interface WorkoutProgramsInterface {
 
     visibility: string;
 
+    /** For a user's copy of an admin-authored program: the program it was copied from. */
+    source_workout_program_id: string | null;
+
     deleted_at: Date;
 
     created_at: Date;
@@ -49,6 +52,9 @@ export interface WorkoutProgramVersionsInterface {
     added_by_user_id: string;
 
     visibility: string;
+
+    /** For a user's copy of an admin-authored version: the version it was copied from. */
+    source_workout_program_version_id: string | null;
 
     deleted_at: Date;
 
