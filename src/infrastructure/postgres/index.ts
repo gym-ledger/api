@@ -1,7 +1,13 @@
-import { Pool } from "pg";
+import pgLib, { Pool } from "pg";
 
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+
+// NUMERIC/DECIMAL columns (set weights, RIR, height, body weight, muscle
+// signals…) come back from `pg` as strings by default, so clients doing
+// `weight + tool_weight` concatenated instead of adding. All of ours fit
+// comfortably in a double, so parse them as numbers once, here.
+pgLib.types.setTypeParser(pgLib.types.builtins.NUMERIC, (value) => parseFloat(value));
 
 export const pg = new Pool({
     connectionString: env.DATABASE_URL,
