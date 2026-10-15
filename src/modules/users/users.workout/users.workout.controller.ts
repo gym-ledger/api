@@ -140,6 +140,8 @@ export const startWorkoutSession = async (req: Request, res: Response, next: Nex
             assignment_id: req.body.assignment_id,
             program_day_id: req.body.program_day_id,
             program_day_session_id: req.body.program_day_session_id,
+            id: req.body.id,
+            started_at: req.body.started_at,
         });
         return responseSend(res, 200, "Workout session started successfully", data);
     } catch (error) {

@@ -333,13 +333,27 @@ export const listExercisesForSessionService = async (data: {
 // Session lifecycle
 // ---------------------------------------------------------------------------
 
+// How far a client-supplied `started_at` may lag behind (a workout picked
+// offline and only synced later) or run ahead (device clock skew) of now.
+const MAX_START_BACKDATE_MS = 1000 * 60 * 60 * 24;
+const MAX_START_CLOCK_SKEW_MS = 1000 * 60 * 5;
+
+/**
+ * Starts (or resumes) a workout session. The client may pass its own `id`
+ * (UUID) and `started_at` so a workout can be picked offline and only written
+ * here with its first set; retrying with the same `id` returns that session.
+ * If a different session is already in progress for this plan, that one is
+ * returned instead — callers must use the returned `id`.
+ */
 export const startWorkoutSessionService = async (data: {
     userId?: string,
     assignment_id?: string,
     program_day_id?: string,
     program_day_session_id?: string,
+    id?: unknown,
+    started_at?: unknown,
 }) => {
-    const { userId, assignment_id, program_day_id, program_day_session_id } = data;
+    const { userId, assignment_id, program_day_id, program_day_session_id, id, started_at } = data;
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
@@ -351,6 +365,38 @@ export const startWorkoutSessionService = async (data: {
     }
     if (!program_day_session_id) {
         throw new AppError("program_day_session_id is required", 400);
+    }
+    if (id !== undefined && (typeof id !== "string" || !isValidUUID(id))) {
+        throw new AppError("Invalid id", 400);
+    }
+    let startedAt = new Date();
+    if (started_at !== undefined) {
+        const parsed = typeof started_at === "string" ? new Date(started_at) : null;
+        if (!parsed || Number.isNaN(parsed.getTime())) {
+            throw new AppError("Invalid started_at", 400);
+        }
+        if (parsed.getTime() > startedAt.getTime() + MAX_START_CLOCK_SKEW_MS) {
+            throw new AppError("started_at cannot be in the future", 400);
+        }
+        if (parsed.getTime() < startedAt.getTime() - MAX_START_BACKDATE_MS) {
+            throw new AppError("started_at is too far in the past", 400);
+        }
+        // Within the allowed skew, a slightly-ahead clock just means "now".
+        startedAt = parsed.getTime() > startedAt.getTime() ? startedAt : parsed;
+    }
+
+    // Idempotent retry: this exact session was already created.
+    if (id) {
+        const sameId = await fetchOneFromTable({
+            table: WORKOUT_SESSIONS_TABLE,
+            where: [{ field: "id", operator: "=", value: id }],
+        }) as WorkoutSessionsInterface | null;
+        if (sameId) {
+            if (sameId.user_id !== userId) {
+                throw new AppError("Session id already in use", 409);
+            }
+            return sameId;
+        }
     }
 
     const assignment = await getOwnedAssignmentOrThrow(userId, assignment_id);
@@ -386,9 +432,10 @@ export const startWorkoutSessionService = async (data: {
     return await addOneInTable({
         table: WORKOUT_SESSIONS_TABLE,
         data: {
+            ...(id ? { id } : {}),
             user_id: userId,
             program_assignment_id: assignment.id,
-            started_at: new Date(),
+            started_at: startedAt,
         },
     }) as WorkoutSessionsInterface;
 }
