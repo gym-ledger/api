@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../shared/errors/utils/asyncHandler.js";
-import { AppError } from "../../shared/errors/AppError.js";
+import { credentialCheckLimiter, otpSendLimiter, tokenLimiter } from "../../middleware/rateLimiters.js";
 import {
     sendOtpForLogin,
     verifyOtpForLogin,
@@ -14,14 +14,14 @@ import {
 
 const authRouter = Router();
 
-authRouter.post("/login/send-otp", asyncHandler(sendOtpForLogin));
-authRouter.post("/login/verify-otp", asyncHandler(verifyOtpForLogin));
-authRouter.post("/login/password", asyncHandler(loginWithPassword));
+authRouter.post("/login/send-otp", otpSendLimiter, asyncHandler(sendOtpForLogin));
+authRouter.post("/login/verify-otp", credentialCheckLimiter, asyncHandler(verifyOtpForLogin));
+authRouter.post("/login/password", credentialCheckLimiter, asyncHandler(loginWithPassword));
 
-authRouter.post("/forgot-password/send-otp", asyncHandler(sendOtpForPasswordReset));
-authRouter.post("/forgot-password/verify-otp", asyncHandler(verifyOtpForPasswordReset));
-authRouter.post("/forgot-password/reset-password", asyncHandler(resetPassword));
+authRouter.post("/forgot-password/send-otp", otpSendLimiter, asyncHandler(sendOtpForPasswordReset));
+authRouter.post("/forgot-password/verify-otp", credentialCheckLimiter, asyncHandler(verifyOtpForPasswordReset));
+authRouter.post("/forgot-password/reset-password", credentialCheckLimiter, asyncHandler(resetPassword));
 
-authRouter.put("/refresh-tokens", asyncHandler(refreshTokens));
-authRouter.delete("/logout", asyncHandler(logout));
+authRouter.put("/refresh-tokens", tokenLimiter, asyncHandler(refreshTokens));
+authRouter.delete("/logout", tokenLimiter, asyncHandler(logout));
 export default authRouter;

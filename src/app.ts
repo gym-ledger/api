@@ -3,6 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import compression from "compression";
 
+import { env } from "./config/env.js";
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import router from "./modules/index/index.routes.js";
@@ -11,6 +12,10 @@ import router from "./modules/index/index.routes.js";
 // import appRoutes from "./src/modules/app/app.routes";
 
 const app = express();
+
+if (env.TRUST_PROXY_HOPS !== undefined) {
+    app.set("trust proxy", env.TRUST_PROXY_HOPS);
+}
 
 app.use(helmet());
 app.use(cors());

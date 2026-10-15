@@ -28,7 +28,7 @@ Run the helper script from the project root:
 bash generate-secrets.sh
 ```
 
-This generates `POSTGRES_PASSWORD`, `DATABASE_PASSWORD`, `ACCESS_TOKEN_SECRET`, and `ADMIN_ACCESS_TOKEN_SECRET`, and rebuilds `DATABASE_URL` to match. It skips any variable that was already set, so it is safe to re-run.
+This generates `POSTGRES_PASSWORD`, `DATABASE_PASSWORD`, `REDIS_PASSWORD`, `ACCESS_TOKEN_SECRET`, and `ADMIN_ACCESS_TOKEN_SECRET`, and rebuilds `DATABASE_URL` and `REDIS_URL` to match. It skips any variable that was already set, so it is safe to re-run.
 
 Everything else in `.env` is correct for this mode and does not need to change.
 
@@ -96,3 +96,12 @@ The `init.sh` script only runs when the `postgres_data` volume is first created.
 docker compose down -v
 bash deploy.sh
 ```
+
+**`REDIS_PASSWORD must be set in .env` (upgrading an existing server)**
+Redis now requires a password, and Postgres/Redis are published on `127.0.0.1` only. On a server whose `.env` predates this, add both lines (then `bash deploy.sh`):
+```bash
+REDIS_PASSWORD=$(openssl rand -hex 32)
+echo "REDIS_PASSWORD=$REDIS_PASSWORD" >> .env
+sed -i "s|^REDIS_URL=.*$|REDIS_URL=redis://:$REDIS_PASSWORD@redis:6379|" .env
+```
+To reach Postgres from your machine, use an SSH tunnel: `ssh -L 5432:127.0.0.1:5432 <server>`.

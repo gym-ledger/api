@@ -26,6 +26,11 @@ const envSchema = z.object({
     ACCESS_TOKEN_SECRET: z.string().min(10),
     ADMIN_ACCESS_TOKEN_SECRET: z.string().min(10),
 
+    // Number of reverse-proxy hops in front of the API (e.g. 1 behind nginx).
+    // Unset = trust none, so req.ip is the direct peer. Must be set when
+    // proxied, otherwise every client shares the proxy's rate-limit bucket.
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).optional(),
+
     // Optional universal login OTP (dev/testing). Unset or empty = no OTP
     // bypass at all. Never accepted by the forgot-password flow.
     MASTER_LOGIN_OTP: z.preprocess(

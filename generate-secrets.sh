@@ -33,7 +33,7 @@ replace_if_placeholder() {
 # ── Generate each secret that still holds the placeholder ─────────────────────
 changed=false
 
-for key in POSTGRES_PASSWORD DATABASE_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET; do
+for key in POSTGRES_PASSWORD DATABASE_PASSWORD REDIS_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET; do
     if grep -qE "^${key}=${PLACEHOLDER}$" .env; then
         replace_if_placeholder "$key" "$(openssl rand -hex 32)"
         echo "==> Generated  $key"
@@ -56,6 +56,16 @@ if grep -qE "^DATABASE_URL=.*${PLACEHOLDER}" .env; then
     changed=true
 else
     echo "==> Skipping   DATABASE_URL (already set)"
+fi
+
+# ── Rebuild REDIS_URL if it still holds the placeholder ───────────────────────
+if grep -qE "^REDIS_URL=.*${PLACEHOLDER}" .env; then
+    REDIS_PASS=$(grep -E "^REDIS_PASSWORD=" .env | cut -d'=' -f2-)
+    sedi "s|^REDIS_URL=.*$|REDIS_URL=redis://:${REDIS_PASS}@redis:6379|" .env
+    echo "==> Rebuilt    REDIS_URL"
+    changed=true
+else
+    echo "==> Skipping   REDIS_URL (already set)"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

@@ -1,0 +1,16 @@
+# Secrets — must only reach the container at runtime via `env_file` in compose
+.env
+.env.*
+run.local.sh
+
+# Rebuilt inside the image
+node_modules
+dist
+
+# Not needed at runtime
+.git
+.gitignore
+docs
+algorithms
+deployment
+*.md

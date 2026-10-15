@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
+import { credentialCheckLimiter, tokenLimiter } from "../../../middleware/rateLimiters.js";
 import {
     loginAdmin,
     refreshAdminTokens
@@ -7,6 +8,6 @@ import {
 
 const adminAuthRouter = Router();
 
-adminAuthRouter.post("/login", asyncHandler(loginAdmin));
-adminAuthRouter.put("/refresh-tokens", asyncHandler(refreshAdminTokens));
+adminAuthRouter.post("/login", credentialCheckLimiter, asyncHandler(loginAdmin));
+adminAuthRouter.put("/refresh-tokens", tokenLimiter, asyncHandler(refreshAdminTokens));
 export default adminAuthRouter;

@@ -66,7 +66,13 @@ export const loginAdminAuthService = async (data: { email: string, password: str
     });
 
     return {
-        admin,
+        // Explicit fields only — the row also holds password_hash and refresh_token_hash.
+        admin: {
+            id: admin.id,
+            email: admin.email,
+            created_at: admin.created_at,
+            updated_at: admin.updated_at,
+        },
         accessToken,
         refreshToken,
     };

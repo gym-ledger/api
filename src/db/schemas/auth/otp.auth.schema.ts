@@ -16,10 +16,6 @@ export interface OtpAuthInterface {
 
     email?: string | null;
 
-    // TEMPORARY
-    // Remove later in production
-    otp?: string | null;
-
     otp_hash: string;
 
     generated_at: Date;
@@ -27,6 +23,10 @@ export interface OtpAuthInterface {
     expires_at: Date;
 
     attempts: number;
+
+    send_count: number;
+
+    send_window_started_at: Date | null;
 
     verified_at: Date | null;
 
@@ -66,9 +66,8 @@ export const OTP_AUTH_SCHEMA = {
         unique: true,
         allowNull: true,
     },
-    otp: {
+    otp_hash: {
         type: "string",
-        unique: false,
         allowNull: false,
     },
     generated_at: {
@@ -84,6 +83,14 @@ export const OTP_AUTH_SCHEMA = {
     attempts: {
         type: "number",
         default: 0,
+    },
+    send_count: {
+        type: "number",
+        default: 0,
+    },
+    send_window_started_at: {
+        type: "date",
+        allowNull: true,
     },
     deleted_at: {
         type: "date",

@@ -11,8 +11,14 @@ import { toPublicUser } from "../../utils/users/users.utils.js";
 import { env } from "../../config/env.js";
 import { USER_SESSIONS_TABLE } from "../../db/schemas/auth/user_sessions.schema.js";
 import { UserSessionsInterface } from "../../db/schemas/auth/user_sessions.schema.js";
+import { logger } from "../../config/logger.js";
+import { claimOtpAttemptRepository } from "./auth.repository.js";
 
 const OTP_TTL_MS = 1000 * 60 * 5;
+const OTP_MAX_ATTEMPTS = 3;
+const OTP_RESEND_COOLDOWN_MS = 1000 * 60;
+const OTP_SEND_WINDOW_MS = 1000 * 60 * 60;
+const OTP_MAX_SENDS_PER_WINDOW = 5;
 const RESET_TOKEN_TTL_MS = 1000 * 60 * 10;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
@@ -79,21 +85,75 @@ const deleteOtpObj = async (otpObj: OtpAuthInterface) => {
     });
 }
 
-/** Creates (or refreshes) the OTP row for this identity + purpose and delivers the code. */
-const issueOtp = async ({ method, phoneNumber, email, purpose }: {
+/**
+ * Issues a brand-new OTP for this identity + purpose and delivers it. A code
+ * is never re-sent, and a resend never resets the attempt counter or extends
+ * the expiry of an existing code — every send is a fresh random code with a
+ * fresh 3-attempt budget, so total guesses are bounded by how many codes an
+ * identity can get: at most one per OTP_RESEND_COOLDOWN_MS and
+ * OTP_MAX_SENDS_PER_WINDOW per OTP_SEND_WINDOW_MS.
+ *
+ * With `silentThrottle`, a throttled request returns quietly instead of
+ * throwing 429 (forgot-password: a 429 would reveal that the account exists,
+ * since only existing accounts ever get a reset OTP row).
+ */
+const issueOtp = async ({ method, phoneNumber, email, purpose, silentThrottle = false }: {
     method: string,
     phoneNumber: any,
     email: any,
     purpose: OtpPurpose,
+    silentThrottle?: boolean,
 }) => {
-    let otpObj = await getOtpObj(method, phoneNumber, email, purpose);
-    let otp = "";
-    let otpHash = "";
-    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
-    if (!otpObj) {
-        otp = generateRandomOTP(OTP_LENGTH);
-        otpHash = await generateOtpHash(otp);
-        otpObj = await addOneInTable({
+    const existing = await getOtpObj(method, phoneNumber, email, purpose);
+    const now = Date.now();
+
+    let sendCount = 1;
+    let sendWindowStartedAt = new Date(now);
+    if (existing) {
+        const sinceLastSendMs = now - new Date(existing.generated_at).getTime();
+        if (sinceLastSendMs < OTP_RESEND_COOLDOWN_MS) {
+            if (silentThrottle) {
+                return;
+            }
+            const waitSeconds = Math.ceil((OTP_RESEND_COOLDOWN_MS - sinceLastSendMs) / 1000);
+            throw new AppError(`Please wait ${waitSeconds}s before requesting a new OTP`, 429);
+        }
+        const windowStartedAt = existing.send_window_started_at
+            ? new Date(existing.send_window_started_at).getTime()
+            : null;
+        if (windowStartedAt !== null && now - windowStartedAt < OTP_SEND_WINDOW_MS) {
+            if (existing.send_count >= OTP_MAX_SENDS_PER_WINDOW) {
+                if (silentThrottle) {
+                    return;
+                }
+                throw new AppError("Too many OTP requests. Please try again later", 429);
+            }
+            sendCount = existing.send_count + 1;
+            sendWindowStartedAt = new Date(windowStartedAt);
+        }
+    }
+
+    const otp = generateRandomOTP(OTP_LENGTH);
+    const codeFields = {
+        otp_hash: await generateOtpHash(otp),
+        generated_at: new Date(now),
+        expires_at: new Date(now + OTP_TTL_MS),
+        attempts: 0,
+        verified_at: null,
+        reset_token_hash: null,
+        send_count: sendCount,
+        send_window_started_at: sendWindowStartedAt,
+        deleted_at: null,
+    };
+    if (existing) {
+        await updateOneInTable({
+            table: OTP_AUTH_TABLE,
+            data: codeFields,
+            where: [{ field: "id", operator: "=", value: existing.id }],
+            useSoftDelete: false,
+        });
+    } else {
+        await addOneInTable({
             table: OTP_AUTH_TABLE,
             data: {
                 method: method,
@@ -101,50 +161,16 @@ const issueOtp = async ({ method, phoneNumber, email, purpose }: {
                 phone_country_code: phoneNumber?.code,
                 phone_number: phoneNumber?.number,
                 email: email,
-                attempts: 0,
-                deleted_at: null,
-                otp: otp,
-                otp_hash: otpHash,
-                expires_at: expiresAt,
-                generated_at: new Date(),
+                ...codeFields,
             },
-        }) as OtpAuthInterface;
-    } else {
-        otp = otpObj.otp ?? "";
-        otpHash = otpObj.otp_hash;
-        let generated_at = otpObj.generated_at;
-        // if more than 1 minute since generated (or the stored code predates the
-        // current OTP length, or was already used for a reset), generate a new otp
-        if (
-            new Date(generated_at).getTime() + 1000 * 60 < Date.now()
-            || otp.length !== OTP_LENGTH
-            || otpObj.verified_at
-        ) {
-            otp = generateRandomOTP(OTP_LENGTH);
-            otpHash = await generateOtpHash(otp);
-        } else {
-            generated_at = new Date();
-        }
-        otpObj = await updateOneInTable({
-            table: OTP_AUTH_TABLE,
-            data: {
-                otp: otp,
-                otp_hash: otpHash,
-                expires_at: expiresAt,
-                attempts: 0,
-                deleted_at: null,
-                generated_at: generated_at,
-                verified_at: null,
-                reset_token_hash: null,
-            },
-            where: [{
-                field: "id",
-                operator: "=",
-                value: otpObj.id,
-            }],
-            useSoftDelete: false,
-        }) as OtpAuthInterface;
+        });
     }
+
+    // SMS/email delivery is still stubbed — surface the code locally only.
+    if (env.NODE_ENV === "development") {
+        logger.info({ purpose, method, otp }, "OTP issued (development only)");
+    }
+
     const template = purpose === "reset_password" ? "otp-reset-password" : "otp-login";
     if (method === "phone") {
         await sendSMS(phoneNumber, otp, template);
@@ -154,48 +180,36 @@ const issueOtp = async ({ method, phoneNumber, email, purpose }: {
 }
 
 /**
- * Checks `otp` against the stored row, enforcing expiry and the 3-attempt
- * limit. Throws on any failure (deleting the row when it's exhausted); returns
- * normally only when the OTP is correct. Does not consume the row.
+ * Checks `otp` against the stored row, enforcing expiry and the per-code
+ * attempt limit. Throws on any failure; returns normally only when the OTP is
+ * correct. Does not consume the row. Failed/expired rows are kept (not
+ * deleted) so the per-identity send counters in `issueOtp` survive.
  */
 const assertOtpValid = async (otpObj: OtpAuthInterface | null, otp: string, { allowMasterOtp }: { allowMasterOtp: boolean }) => {
     if (!otpObj || otpObj.verified_at) {
         throw new AppError("OTP not found. Please try again", 400);
     }
-    // if 3 attempts already made, throw error
-    if (otpObj.attempts >= 3) {
-        await deleteOtpObj(otpObj);
-        throw new AppError("Maximum attempts reached. Please try again later", 400);
+    if (new Date(otpObj.expires_at) < new Date()) {
+        throw new AppError("OTP expired. Please request a new OTP", 400);
     }
 
-    // if expired, throw error
-    if (otpObj.expires_at < new Date()) {
-        await deleteOtpObj(otpObj);
-        throw new AppError("OTP expired. Please try again", 400);
+    // Claim the attempt atomically before checking the code, so parallel
+    // guesses can't all see the same count.
+    const attempts = await claimOtpAttemptRepository(otpObj.id, OTP_MAX_ATTEMPTS);
+    if (attempts === null) {
+        throw new AppError("Maximum attempts reached. Please request a new OTP", 400);
     }
 
     // Universal OTP from env.MASTER_LOGIN_OTP — login flow only (never forgot-password,
     // where it would let anyone reset any account). Unset in env = no bypass.
     const isMasterOtp = allowMasterOtp && !!env.MASTER_LOGIN_OTP && otp === env.MASTER_LOGIN_OTP;
-    // if otp hash is not correct, throw error
-    if (!isMasterOtp && !await verifyOtpHash(otpObj.otp_hash, String(otp ?? ""))) {
-        if (otpObj.attempts >= 2) {
-            await deleteOtpObj(otpObj);
-            throw new AppError("Invalid OTP 3 times. Please send a new OTP", 400);
+    if (isMasterOtp) {
+        return;
+    }
+    if (!await verifyOtpHash(otpObj.otp_hash, String(otp ?? ""))) {
+        if (attempts >= OTP_MAX_ATTEMPTS) {
+            throw new AppError(`Invalid OTP ${OTP_MAX_ATTEMPTS} times. Please request a new OTP`, 400);
         }
-        await updateOneInTable({
-            table: OTP_AUTH_TABLE,
-            data: {
-                attempts: otpObj.attempts + 1,
-                last_attempted_at: new Date(),
-            },
-            where: [{
-                field: "id",
-                operator: "=",
-                value: otpObj.id,
-            }],
-            useSoftDelete: false,
-        });
         throw new AppError("Invalid OTP. Please try again", 400);
     }
 }
@@ -272,7 +286,7 @@ export const sendOtpForPasswordResetService = async (data: any) => {
     if (!userObj) {
         return;
     }
-    await issueOtp({ method, phoneNumber, email, purpose: "reset_password" });
+    await issueOtp({ method, phoneNumber, email, purpose: "reset_password", silentThrottle: true });
 }
 
 /**

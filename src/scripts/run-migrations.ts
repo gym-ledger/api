@@ -7,80 +7,100 @@ const migrationsDir = path.join(
   "src/db/migrations"
 );
 
+// Arbitrary app-specific key; serializes concurrent runners (e.g. two
+// containers booting at once — entrypoint.sh migrates on every start).
+const MIGRATION_LOCK_KEY = 7_340_211;
+
 async function runMigrations() {
-  // Ensure tracking table exists
+  // A transaction must run on ONE connection. `pg.query` on the Pool checks out
+  // any idle client per call, so BEGIN / migration / COMMIT could otherwise land
+  // on different connections and a failed migration would not roll back.
+  const client = await pg.connect();
 
-  await pg.query(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      id SERIAL PRIMARY KEY,
-      filename VARCHAR(255) NOT NULL UNIQUE,
-      executed_at TIMESTAMP NOT NULL DEFAULT NOW()
-    );
-  `);
+  try {
+    await client.query("SELECT pg_advisory_lock($1)", [MIGRATION_LOCK_KEY]);
 
-  // Get already-run migrations
+    // Ensure tracking table exists
 
-  const executedResult = await pg.query(`
-    SELECT filename
-    FROM schema_migrations
-  `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        id SERIAL PRIMARY KEY,
+        filename VARCHAR(255) NOT NULL UNIQUE,
+        executed_at TIMESTAMP NOT NULL DEFAULT NOW()
+      );
+    `);
 
-  const executedMigrations = new Set(
-    executedResult.rows.map(
-      row => row.filename
-    )
-  );
+    // Get already-run migrations (read after taking the lock, so a runner that
+    // waited sees what the other one applied)
 
-  // Read migration files
+    const executedResult = await client.query(`
+      SELECT filename
+      FROM schema_migrations
+    `);
 
-  const files = fs
-    .readdirSync(migrationsDir)
-    .filter(file => file.endsWith(".sql"))
-    .sort();
-
-  for (const file of files) {
-    if (executedMigrations.has(file)) {
-      console.log(`Skipping ${file}`);
-      continue;
-    }
-
-    console.log(`Running ${file}`);
-
-    const sql = fs.readFileSync(
-      path.join(migrationsDir, file),
-      "utf8"
+    const executedMigrations = new Set(
+      executedResult.rows.map(
+        row => row.filename
+      )
     );
 
-    try {
-      await pg.query("BEGIN");
+    // Read migration files
 
-      await pg.query(sql);
+    const files = fs
+      .readdirSync(migrationsDir)
+      .filter(file => file.endsWith(".sql"))
+      .sort();
 
-      await pg.query(
-        `
-        INSERT INTO schema_migrations(filename)
-        VALUES ($1)
-        `,
-        [file]
+    for (const file of files) {
+      if (executedMigrations.has(file)) {
+        console.log(`Skipping ${file}`);
+        continue;
+      }
+
+      console.log(`Running ${file}`);
+
+      const sql = fs.readFileSync(
+        path.join(migrationsDir, file),
+        "utf8"
       );
 
-      await pg.query("COMMIT");
+      try {
+        await client.query("BEGIN");
 
-      console.log(`Completed ${file}`);
-    } catch (err) {
-      await pg.query("ROLLBACK");
+        await client.query(sql);
 
-      console.error(
-        `Failed migration ${file}`
-      );
+        await client.query(
+          `
+          INSERT INTO schema_migrations(filename)
+          VALUES ($1)
+          `,
+          [file]
+        );
 
-      throw err;
+        await client.query("COMMIT");
+
+        console.log(`Completed ${file}`);
+      } catch (err) {
+        await client.query("ROLLBACK");
+
+        console.error(
+          `Failed migration ${file}`
+        );
+
+        throw err;
+      }
     }
+
+    console.log("All migrations complete");
+  } finally {
+    await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => undefined);
+    client.release();
   }
-
-  console.log("All migrations complete");
-
-  process.exit(0);
 }
 
-runMigrations();
+runMigrations()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

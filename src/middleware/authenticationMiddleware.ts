@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { env } from "../config/env.js";
-import { jwtVerify } from "jose";
+import { errors as joseErrors, jwtVerify } from "jose";
 import { fetchOneFromTable } from "../modules/index/index.repository.js";
 import { USERS_TABLE, UsersInterface } from "../db/schemas/users/users.schema.js";
 import { ADMIN_USER_TABLE, AdminUserInterface } from "../db/schemas/admin/admin.schema.js";
@@ -39,6 +39,11 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
         req.userId = user.id;
         next();
     } catch (error) {
+        // Expired / malformed / badly-signed tokens are a 401, not a server error —
+        // clients key their refresh-and-retry logic off the 401.
+        if (error instanceof joseErrors.JOSEError) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
         next(error);
     }
 }
@@ -72,6 +77,11 @@ export const verifyAdminToken = async (req: Request, res: Response, next: NextFu
         req.adminUserId = adminUser.id;
         next();
     } catch (error) {
+        // Expired / malformed / badly-signed tokens are a 401, not a server error —
+        // clients key their refresh-and-retry logic off the 401.
+        if (error instanceof joseErrors.JOSEError) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
         next(error);
     }
 }
