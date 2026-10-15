@@ -9,7 +9,11 @@ export interface UsersInterface {
 
     email: string;
 
-    password_hash: string;
+    first_name: string | null;
+
+    last_name: string | null;
+
+    password_hash: string | null;
 
     deleted_at: Date;
 
@@ -33,6 +37,14 @@ export const USERS_SCHEMA = {
         allowNull: true,
     },
     email: {
+        type: "string",
+        allowNull: true,
+    },
+    first_name: {
+        type: "string",
+        allowNull: true,
+    },
+    last_name: {
         type: "string",
         allowNull: true,
     },

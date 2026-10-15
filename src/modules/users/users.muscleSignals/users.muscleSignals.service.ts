@@ -16,6 +16,14 @@ export const MUSCLE_SIGNAL_CONFIG = {
     trainingHalfLifeHours: 168,
     fatigueReferenceStimulus: 5.0,
     trainingReferenceStimulus: 10.0,
+    // Ceiling on the stored training accumulator. Without it a long block of
+    // hard training piles up raw value far above the 100% reference (invisible,
+    // since the gauge clamps), which then takes weeks of extra decay to bleed
+    // off — keeping untrained muscles visibly "trained" for 5-6 weeks.
+    trainingMaxStimulus: 15.0,
+    // Exponential decay never reaches 0; below this the training gauge reads 0
+    // so a muscle untrained for ~4 weeks drops off the heatmap entirely.
+    trainingDisplayFloorPercent: 10,
 } as const;
 
 export function setEffectiveness(rir: number | null | undefined): number {
@@ -31,6 +39,14 @@ export function decay(value: number, elapsedHours: number, halfLifeHours: number
 
 export function clampPercent(value: number): number {
     return Math.max(0, Math.min(100, value));
+}
+
+export function capTraining(value: number): number {
+    return Math.min(value, MUSCLE_SIGNAL_CONFIG.trainingMaxStimulus);
+}
+
+export function applyTrainingFloor(percent: number): number {
+    return percent < MUSCLE_SIGNAL_CONFIG.trainingDisplayFloorPercent ? 0 : percent;
 }
 
 interface StimulusInput {
@@ -111,7 +127,7 @@ const applyStimulusToMuscleSignal = async (params: {
             data: {
                 user_id: userId,
                 muscle_id: muscleId,
-                training_value: stimulus,
+                training_value: capTraining(stimulus),
                 fatigue_value: stimulus,
                 last_computed_at: now,
             },
@@ -120,7 +136,7 @@ const applyStimulusToMuscleSignal = async (params: {
     }
 
     const elapsedHours = (now.getTime() - new Date(existing.last_computed_at).getTime()) / 3_600_000;
-    const nextTraining = decay(Number(existing.training_value), elapsedHours, MUSCLE_SIGNAL_CONFIG.trainingHalfLifeHours) + stimulus;
+    const nextTraining = capTraining(decay(Number(existing.training_value), elapsedHours, MUSCLE_SIGNAL_CONFIG.trainingHalfLifeHours) + stimulus);
     const nextFatigue = decay(Number(existing.fatigue_value), elapsedHours, MUSCLE_SIGNAL_CONFIG.fatigueHalfLifeHours) + stimulus;
 
     await updateOneInTable({
@@ -158,7 +174,8 @@ export const getMuscleSignalsForUserService = async (userId?: string): Promise<M
         const elapsedHours = row.last_computed_at
             ? (now.getTime() - new Date(row.last_computed_at).getTime()) / 3_600_000
             : 0;
-        const displayedTraining = decay(row.training_value ?? 0, elapsedHours, MUSCLE_SIGNAL_CONFIG.trainingHalfLifeHours);
+        // capTraining here too so rows written before the cap existed behave as if capped.
+        const displayedTraining = decay(capTraining(row.training_value ?? 0), elapsedHours, MUSCLE_SIGNAL_CONFIG.trainingHalfLifeHours);
         const displayedFatigue = decay(row.fatigue_value ?? 0, elapsedHours, MUSCLE_SIGNAL_CONFIG.fatigueHalfLifeHours);
 
         return {
@@ -169,7 +186,7 @@ export const getMuscleSignalsForUserService = async (userId?: string): Promise<M
             body_region: row.body_region,
             display_order: row.display_order,
             training_percent: row.xp_enabled
-                ? clampPercent((displayedTraining / MUSCLE_SIGNAL_CONFIG.trainingReferenceStimulus) * 100)
+                ? applyTrainingFloor(clampPercent((displayedTraining / MUSCLE_SIGNAL_CONFIG.trainingReferenceStimulus) * 100))
                 : null,
             fatigue_percent: row.recovery_enabled
                 ? clampPercent((displayedFatigue / MUSCLE_SIGNAL_CONFIG.fatigueReferenceStimulus) * 100)

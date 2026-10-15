@@ -3,6 +3,10 @@ import { AppError } from "../../shared/errors/AppError.js";
 import {
     sendOtpForLoginService,
     verifyOtpForLoginService,
+    loginWithPasswordService,
+    sendOtpForPasswordResetService,
+    verifyOtpForPasswordResetService,
+    resetPasswordService,
     refreshTokensService,
     logoutService
 } from "./auth.service.js";
@@ -23,6 +27,47 @@ export const verifyOtpForLogin = async (req: Request, res: Response, next: NextF
         const data = await verifyOtpForLoginService(req.body);
 
         responseSend(res, 200, "Login successful", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const loginWithPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await loginWithPasswordService(req.body);
+
+        responseSend(res, 200, "Login successful", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const sendOtpForPasswordReset = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await sendOtpForPasswordResetService(req.body);
+
+        // Same response whether or not the account exists (see service).
+        responseSend(res, 200, "If an account exists, an OTP has been sent", null);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const verifyOtpForPasswordReset = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await verifyOtpForPasswordResetService(req.body);
+
+        responseSend(res, 200, "OTP verified", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await resetPasswordService(req.body);
+
+        responseSend(res, 200, "Password reset successfully. Please log in again", null);
     } catch (error) {
         next(error);
     }

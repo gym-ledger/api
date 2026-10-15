@@ -2,18 +2,17 @@ import { NextFunction, Request, Response } from "express";
 import { responseSend } from "../../../helpers/response-send.js";
 import {
     getUserPreferencesService,
-    updateUserPreferencesService
+    updateUserPreferencesService,
+    getUserSelfProfileService,
+    updateUserNameService,
+    changeUserPasswordService
 } from "./users.profile.service.js";
 
 
 export const getUserSelfProfile = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        responseSend(res, 200, "User profile fetched successfully", {
-            id: req.user.id,
-            phone_country_code: req.user.phone_country_code,
-            phone_number: req.user.phone_number,
-            email: req.user.email,
-        });
+        const data = await getUserSelfProfileService({ userId: req.userId as string });
+        responseSend(res, 200, "User profile fetched successfully", data);
     } catch (error) {
         next(error);
     }
@@ -37,4 +36,22 @@ export const updateUserPreferences = async (req: Request, res: Response, next: N
     } catch (error) {
         next(error);
     }
-}   
+}
+
+export const updateUserName = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await updateUserNameService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, "Name updated successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const changeUserPassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await changeUserPasswordService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, "Password updated successfully", null);
+    } catch (error) {
+        next(error);
+    }
+}

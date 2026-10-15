@@ -1,9 +1,13 @@
 export const OTP_AUTH_TABLE = "otp_auth";
 
+export type OtpPurpose = "login" | "reset_password";
+
 export interface OtpAuthInterface {
     id: string;
 
     method: "email" | "phone";
+
+    purpose: OtpPurpose;
 
     phoneNumber?: {
         code: string;
@@ -24,6 +28,10 @@ export interface OtpAuthInterface {
 
     attempts: number;
 
+    verified_at: Date | null;
+
+    reset_token_hash: string | null;
+
     deleted_at: Date;
 
     created_at: Date;
@@ -40,6 +48,12 @@ export const OTP_AUTH_SCHEMA = {
     method: {
         type: "string",
         enum: ["email", "phone"],
+        allowNull: false,
+    },
+    purpose: {
+        type: "string",
+        enum: ["login", "reset_password"],
+        default: "login",
         allowNull: false,
     },
     phone_number: {
@@ -84,6 +98,14 @@ export const OTP_AUTH_SCHEMA = {
         type: "date",
         default: new Date(),
         allowNull: false,
+    },
+    verified_at: {
+        type: "date",
+        allowNull: true,
+    },
+    reset_token_hash: {
+        type: "string",
+        allowNull: true,
     },
     last_attempted_at: {
         type: "date",

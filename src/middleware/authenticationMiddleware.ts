@@ -25,6 +25,8 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
                 "phone_country_code",
                 "phone_number",
                 "email",
+                "first_name",
+                "last_name",
                 "created_at",
                 "updated_at",
                 "deleted_at",
