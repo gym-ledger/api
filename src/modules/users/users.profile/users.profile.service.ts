@@ -1,6 +1,7 @@
 import { USER_HEALTH_PREFERENCES_TABLE, UserHealthPreferencesInterface } from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import { USERS_TABLE } from "../../../db/schemas/users/users.schema.js";
 import { AppError } from "../../../shared/errors/AppError.js";
+import { resolveSupportedTimezone } from "../../../utils/timezone.js";
 import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 
 export const getUserPreferencesService = async ({
@@ -33,8 +34,12 @@ export const updateUserPreferencesService = async ({
         throw new AppError("Data is required", 400);
     }
     const toUpdate: Partial<UserHealthPreferencesInterface> = {};;
-    if (data.timezone) {
-        toUpdate.timezone = data.timezone;
+    if (data.timezone !== undefined) {
+        const timezone = await resolveSupportedTimezone(data.timezone);
+        if (!timezone) {
+            throw new AppError(`Unsupported timezone: ${String(data.timezone)}`, 400);
+        }
+        toUpdate.timezone = timezone;
     }
     if (data.weight_units) {
         toUpdate.weight_units = data.weight_units;

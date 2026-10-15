@@ -1,5 +1,6 @@
 import { AppError } from "../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../utils/validation.js";
+import { resolveSupportedTimezone } from "../../../utils/timezone.js";
 import { addOneInTable, fetchManyFromTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { EXERCISES_TABLE, ExercisesInterface } from "../../../db/schemas/exercises/exercises.schema.js";
 import { PROGRAM_DAYS_TABLE, ProgramDaysInterface } from "../../../db/schemas/workoutPrograms/programDays.schema.js";
@@ -1081,8 +1082,10 @@ const getUserHealthPreferencesOrDefault = async (
         where: [{ field: "user_id", operator: "=", value: userId }],
         select: ["timezone", "weight_units"],
     }) as UserHealthPreferencesInterface | null;
+    // Stored values may predate validation — map legacy aliases and fall back
+    // to UTC rather than let an unknown zone fail the `AT TIME ZONE` queries.
     return {
-        timezone: prefs?.timezone || DEFAULT_TIMEZONE,
+        timezone: (prefs?.timezone && await resolveSupportedTimezone(prefs.timezone)) || DEFAULT_TIMEZONE,
         weight_units: prefs?.weight_units || DEFAULT_WEIGHT_UNITS,
     };
 }
