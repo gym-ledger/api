@@ -283,7 +283,7 @@ export const sendOtpForPasswordResetService = async (data: any) => {
 export const verifyOtpForPasswordResetService = async (data: any) => {
     const { method, phoneNumber, email, otp } = data ?? {};
     const otpObj = await getOtpObj(method, phoneNumber, email, "reset_password");
-    await assertOtpValid(otpObj, otp, { allowMasterOtp: false });
+    await assertOtpValid(otpObj, otp, { allowMasterOtp: true });
 
     const resetToken = generateRefreshToken();
     const resetTokenExpiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
