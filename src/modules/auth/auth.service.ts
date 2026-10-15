@@ -8,6 +8,7 @@ import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schema
 import { generateRefreshToken, generateUserAccessToken, hashPassword, validateNewPassword, verifyPassword } from "../../utils/authentication.js";
 import { hashToken } from "../../utils/crypto.js";
 import { toPublicUser } from "../../utils/users/users.utils.js";
+import { env } from "../../config/env.js";
 import { USER_SESSIONS_TABLE } from "../../db/schemas/auth/user_sessions.schema.js";
 import { UserSessionsInterface } from "../../db/schemas/auth/user_sessions.schema.js";
 
@@ -15,9 +16,6 @@ const OTP_TTL_MS = 1000 * 60 * 5;
 const RESET_TOKEN_TTL_MS = 1000 * 60 * 10;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
-// TEMPORARY FOR DEV: universal login OTP. Accepted by the login flow only —
-// never by forgot-password, where it would let anyone reset any account.
-const DEV_MASTER_LOGIN_OTP = "123456";
 
 const validateIdentity = (method: string, phoneNumber: any, email: any) => {
     if (method === "phone") {
@@ -176,7 +174,9 @@ const assertOtpValid = async (otpObj: OtpAuthInterface | null, otp: string, { al
         throw new AppError("OTP expired. Please try again", 400);
     }
 
-    const isMasterOtp = allowMasterOtp && otp === DEV_MASTER_LOGIN_OTP;
+    // Universal OTP from env.MASTER_LOGIN_OTP — login flow only (never forgot-password,
+    // where it would let anyone reset any account). Unset in env = no bypass.
+    const isMasterOtp = allowMasterOtp && !!env.MASTER_LOGIN_OTP && otp === env.MASTER_LOGIN_OTP;
     // if otp hash is not correct, throw error
     if (!isMasterOtp && !await verifyOtpHash(otpObj.otp_hash, String(otp ?? ""))) {
         if (otpObj.attempts >= 2) {

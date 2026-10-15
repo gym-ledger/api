@@ -25,6 +25,13 @@ const envSchema = z.object({
 
     ACCESS_TOKEN_SECRET: z.string().min(10),
     ADMIN_ACCESS_TOKEN_SECRET: z.string().min(10),
+
+    // Optional universal login OTP (dev/testing). Unset or empty = no OTP
+    // bypass at all. Never accepted by the forgot-password flow.
+    MASTER_LOGIN_OTP: z.preprocess(
+        (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+        z.string().regex(/^[0-9]{6}$/, "must be exactly 6 digits").optional()
+    ),
 });
 
 const parsed = envSchema.safeParse(process.env);
