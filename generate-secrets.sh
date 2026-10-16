@@ -33,7 +33,7 @@ replace_if_placeholder() {
 # ── Generate each secret that still holds the placeholder ─────────────────────
 changed=false
 
-for key in POSTGRES_PASSWORD DATABASE_PASSWORD REDIS_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET; do
+for key in POSTGRES_PASSWORD DATABASE_PASSWORD REDIS_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET DEFAULT_ADMIN_PASSWORD; do
     if grep -qE "^${key}=${PLACEHOLDER}$" .env; then
         replace_if_placeholder "$key" "$(openssl rand -hex 32)"
         echo "==> Generated  $key"
@@ -68,11 +68,20 @@ else
     echo "==> Skipping   REDIS_URL (already set)"
 fi
 
+# ── The first admin account needs a real email (seed-admin refuses defaults) ─
+admin_email=$(grep -E "^DEFAULT_ADMIN_EMAIL=" .env | cut -d"=" -f2- || true)
+if [[ -z "$admin_email" || "$admin_email" == "admin@admin.com" ]]; then
+    echo ""
+    echo "==> ACTION NEEDED: set DEFAULT_ADMIN_EMAIL in .env to your own address."
+    echo "    The API container will not start in production until it is set."
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 if $changed; then
     echo "==> Secrets written to .env"
     echo "    Review DEPLOY_MODE and host settings before running deploy.sh."
+    echo "    The first admin password is DEFAULT_ADMIN_PASSWORD in .env — sign in with it, then keep it safe."
 else
     echo "==> All secrets already set. No changes made."
 fi

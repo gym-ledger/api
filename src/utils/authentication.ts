@@ -36,7 +36,8 @@ export const generateAdminAccessToken = async ({
     userId: string;
     sessionId: string;
 }) => {
-    return await new SignJWT({
+    const accessTokenExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
+    const accessToken = await new SignJWT({
         sessionId,
     })
         .setProtectedHeader({
@@ -50,6 +51,8 @@ export const generateAdminAccessToken = async ({
                 env.ADMIN_ACCESS_TOKEN_SECRET
             )
         );
+
+    return { accessToken, accessTokenExpiresAt };
 }
 export function generateRefreshToken() {
     return crypto.randomBytes(64).toString("hex");

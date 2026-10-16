@@ -2,8 +2,9 @@ import { OTP_AUTH_TABLE, OtpAuthInterface, OtpPurpose } from "../../db/schemas/a
 import { generateOtpHash, generateRandomOTP, OTP_LENGTH, verifyOtpHash } from "../../helpers/otp.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { fetchOneFromTable, addOneInTable, updateOneInTable, deleteOneFromTable, deleteManyInTable } from "../index/index.repository.js";
-import { sendSMS } from "../../utils/sms-utils.js";
-import { sendEmail } from "../../utils/email-utils.js";
+import { sendOtpWhatsApp } from "../../utils/whatsapp-utils.js";
+import { isEmailDeliveryConfigured, OtpTemplate, sendOtpEmail } from "../../utils/email-utils.js";
+import { OtpDeliveryError } from "../../shared/errors/OtpDeliveryError.js";
 import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schema.js";
 import { generateRefreshToken, generateUserAccessToken, hashPassword, validateNewPassword, verifyPassword } from "../../utils/authentication.js";
 import { hashToken } from "../../utils/crypto.js";
@@ -85,6 +86,18 @@ const deleteOtpObj = async (otpObj: OtpAuthInterface) => {
     });
 }
 
+/** Phone codes go out over WhatsApp, which an instance may not have set up (PHONE_OTP_ENABLED). */
+const assertOtpMethodAvailable = (method: string) => {
+    if (method === "phone" && !env.PHONE_OTP_ENABLED) {
+        throw new AppError("Codes can't be sent to phone numbers. Sign in with your password or use email", 400);
+    }
+}
+
+/** What the front-ends need to know to render the sign-in options. */
+export const getAuthConfigService = () => ({
+    phoneOtpEnabled: env.PHONE_OTP_ENABLED,
+});
+
 /**
  * Issues a brand-new OTP for this identity + purpose and delivers it. A code
  * is never re-sent, and a resend never resets the attempt counter or extends
@@ -104,6 +117,7 @@ const issueOtp = async ({ method, phoneNumber, email, purpose, silentThrottle = 
     purpose: OtpPurpose,
     silentThrottle?: boolean,
 }) => {
+    assertOtpMethodAvailable(method);
     const existing = await getOtpObj(method, phoneNumber, email, purpose);
     const now = Date.now();
 
@@ -166,16 +180,50 @@ const issueOtp = async ({ method, phoneNumber, email, purpose, silentThrottle = 
         });
     }
 
-    // SMS/email delivery is still stubbed — surface the code locally only.
+    await deliverOtp({ method, phoneNumber, email, otp, purpose, swallowFailure: silentThrottle });
+}
+
+/**
+ * Hands the code to Resend (email) or Twilio (WhatsApp). In development the
+ * code is also logged, and an unconfigured email provider is tolerated so
+ * the app runs locally without credentials; production refuses to boot
+ * without one (see config/env.ts).
+ *
+ * A provider failure becomes a generic 502 — unless `swallowFailure`
+ * (forgot-password), where any non-uniform response would reveal that the
+ * account exists, so the failure is only logged.
+ */
+const deliverOtp = async ({ method, phoneNumber, email, otp, purpose, swallowFailure }: {
+    method: string,
+    phoneNumber: any,
+    email: any,
+    otp: string,
+    purpose: OtpPurpose,
+    swallowFailure: boolean,
+}) => {
     if (env.NODE_ENV === "development") {
         logger.info({ purpose, method, otp }, "OTP issued (development only)");
     }
 
-    const template = purpose === "reset_password" ? "otp-reset-password" : "otp-login";
-    if (method === "phone") {
-        await sendSMS(phoneNumber, otp, template);
-    } else if (method === "email") {
-        await sendEmail(email, otp, template);
+    const template: OtpTemplate = purpose === "reset_password" ? "otp-reset-password" : "otp-login";
+    try {
+        if (method === "phone") {
+            await sendOtpWhatsApp({ phoneNumber, otp });
+        } else if (method === "email") {
+            if (!isEmailDeliveryConfigured() && env.NODE_ENV !== "production") {
+                return;
+            }
+            await sendOtpEmail({ email, otp, template, ttlMinutes: OTP_TTL_MS / 60_000 });
+        }
+    } catch (error) {
+        if (!(error instanceof OtpDeliveryError)) {
+            throw error;
+        }
+        logger.error({ provider: error.provider, details: error.details, purpose, method }, error.message);
+        if (swallowFailure) {
+            return;
+        }
+        throw new AppError("We couldn't send your code. Please try again in a minute", 502);
     }
 }
 
@@ -217,19 +265,20 @@ const assertOtpValid = async (otpObj: OtpAuthInterface | null, otp: string, { al
 /** Opens a new refresh-token session for the user and returns the login payload. */
 const createUserSession = async (userObj: UsersInterface) => {
     const refreshToken = generateRefreshToken();
+    const refreshTokenExpiresAt = new Date(Date.now() + SESSION_TTL_MS);
     const sessionObj = await addOneInTable({
         table: USER_SESSIONS_TABLE,
         data: {
             user_id: userObj.id,
             refresh_token_hash: hashToken(refreshToken),
-            expires_at: new Date(Date.now() + SESSION_TTL_MS),
+            expires_at: refreshTokenExpiresAt,
         },
     }) as UserSessionsInterface;
     const { accessToken, accessTokenExpiresAt } = await generateUserAccessToken({
         userId: userObj.id,
         sessionId: sessionObj.id,
     });
-    return { user: toPublicUser(userObj), accessToken, accessTokenExpiresAt, refreshToken };
+    return { user: toPublicUser(userObj), accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt };
 }
 
 export const sendOtpForLoginService = async (data: any) => {
@@ -282,6 +331,8 @@ export const loginWithPasswordService = async (data: any) => {
  */
 export const sendOtpForPasswordResetService = async (data: any) => {
     const { method, phoneNumber, email } = data ?? {};
+    // Checked before the account lookup so the reply can't depend on whether it exists.
+    assertOtpMethodAvailable(method);
     const userObj = await findUserByIdentity(method, phoneNumber, email);
     if (!userObj) {
         return;
@@ -366,9 +417,10 @@ export const resetPasswordService = async (data: any) => {
     });
 }
 
-export const refreshTokensService = async (refreshToken: string) => {
+export const refreshTokensService = async (refreshToken: string | undefined) => {
+    // 401, not 400: the clients treat any non-401 failure as transient and keep the session.
     if (!refreshToken) {
-        throw new AppError("Refresh token is required", 400);
+        throw new AppError("Refresh token is required", 401);
     }
     const sessionObj = await fetchOneFromTable({
         table: USER_SESSIONS_TABLE,
@@ -407,11 +459,12 @@ export const refreshTokensService = async (refreshToken: string) => {
         userId: sessionObj.user_id,
         sessionId: refreshTokenHash,
     });
+    const refreshTokenExpiresAt = new Date(Date.now() + SESSION_TTL_MS);
     await updateOneInTable({
         table: USER_SESSIONS_TABLE,
         data: {
             refresh_token_hash: refreshTokenHash,
-            expires_at: new Date(Date.now() + SESSION_TTL_MS),
+            expires_at: refreshTokenExpiresAt,
             last_used_at: new Date(),
         },
         where: [{
@@ -421,7 +474,7 @@ export const refreshTokensService = async (refreshToken: string) => {
         }],
         useSoftDelete: false,
     });
-    return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken };
+    return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken, refreshTokenExpiresAt };
 }
 
 /**
@@ -431,9 +484,9 @@ export const refreshTokensService = async (refreshToken: string) => {
  * up, etc.) is treated as a no-op rather than an error, since the caller's
  * goal ("this token should no longer work") is already satisfied.
  */
-export const logoutService = async (refreshToken: string) => {
+export const logoutService = async (refreshToken: string | undefined) => {
     if (!refreshToken) {
-        throw new AppError("Refresh token is required", 400);
+        return;
     }
     const sessionObj = await fetchOneFromTable({
         table: USER_SESSIONS_TABLE,

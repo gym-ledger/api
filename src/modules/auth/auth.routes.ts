@@ -9,10 +9,13 @@ import {
     verifyOtpForPasswordReset,
     resetPassword,
     refreshTokens,
-    logout
+    logout,
+    getAuthConfig
 } from './auth.controller.js';
 
 const authRouter = Router();
+
+authRouter.get("/config", asyncHandler(getAuthConfig));
 
 authRouter.post("/login/send-otp", otpSendLimiter, asyncHandler(sendOtpForLogin));
 authRouter.post("/login/verify-otp", credentialCheckLimiter, asyncHandler(verifyOtpForLogin));

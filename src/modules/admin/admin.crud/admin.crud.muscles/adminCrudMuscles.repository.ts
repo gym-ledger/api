@@ -86,28 +86,38 @@ export const fetchOrderedMusclesForAdminRepository = async (data: {
     };
 }
 
-export const fetchHeirarchicalMusclesForAdminRepository = async (data: { search?: string, page?: number, limit?: number }) => {
+/**
+ * Top-level muscles, each with its children as [{ id, name }]. page/limit
+ * arrive straight from the query string, so they are coerced to bounded
+ * integers and bound as parameters — never interpolated into the SQL.
+ * Search is ILIKE on name (muscles have no search_vector, see above).
+ */
+export const fetchHeirarchicalMusclesForAdminRepository = async (data: { search?: string, page?: number | string, limit?: number | string }) => {
     const { search = "", page = 1, limit = 20 } = data;
 
-    const whereParams: QueryCondition[] = [
-        { field: "name", operator: "FTS", value: search }
-    ];
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 20));
+    const offset = (pageNum - 1) * limitNum;
 
-    let {
-        values,
-        whereClause,
-    } = buildWhereClause(whereParams);
-    const offset = (page - 1) * limit;
+    const conditions: string[] = ["m.parent_muscle_id IS NULL", "m.deleted_at IS NULL"];
+    const values: unknown[] = [];
+    if (typeof search === "string" && search.trim()) {
+        values.push(`%${search.trim()}%`);
+        conditions.push(`m.name ILIKE $${values.length}`);
+    }
+    values.push(limitNum, offset);
+
     const query = `
-    SELECT m.id, m.name, (
-        SELECT ARRAY_AGG(m2.id, m2.name)
+    SELECT m.id, m.name, COALESCE((
+        SELECT json_agg(json_build_object('id', m2.id, 'name', m2.name) ORDER BY m2.display_order ASC)
         FROM muscles m2
         WHERE m2.parent_muscle_id = m.id
-    ) as childrenMuscles
+            AND m2.deleted_at IS NULL
+    ), '[]'::json) AS "childrenMuscles"
     FROM muscles m
-    WHERE m.parent_muscle_id IS NULL
-    ${whereClause}
-    LIMIT ${limit} OFFSET ${offset}
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY m.display_order ASC
+    LIMIT $${values.length - 1} OFFSET $${values.length}
     `;
     const result = await pg.query(query, values);
     return result.rows as { id: string, name: string, childrenMuscles: { id: string, name: string }[] }[];

@@ -4,8 +4,10 @@ import { ADMIN_USER_TABLE, AdminUserInterface } from "../../../db/schemas/admin/
 import { generateAdminAccessToken, generateRefreshToken, hashPassword, verifyPassword } from "../../../utils/authentication.js";
 import { hashToken } from "../../../utils/crypto.js";
 
+const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+
 export const loginAdminAuthService = async (data: { email: string, password: string }) => {
-    const { email, password } = data;
+    const { email, password } = data ?? {};
     if (!email) {
         throw new AppError("Email is required", 400);
     }
@@ -24,8 +26,10 @@ export const loginAdminAuthService = async (data: { email: string, password: str
         ],
     }) as AdminUserInterface;
 
+    // Same reply for an unknown email and a wrong password, so this can't be
+    // used to find out which admin accounts exist.
     if (!admin) {
-        throw new AppError("Admin not found", 404);
+        throw new AppError("Invalid email or password", 401);
         // init admin
         // const passwordHash = await hashPassword('test@test.com');
         // admin = await addOneInTable({
@@ -45,7 +49,8 @@ export const loginAdminAuthService = async (data: { email: string, password: str
 
     const refreshToken = generateRefreshToken();
     const refreshTokenHash = hashToken(refreshToken);
-    const accessToken = await generateAdminAccessToken({
+    const refreshTokenExpiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_MS);
+    const { accessToken, accessTokenExpiresAt } = await generateAdminAccessToken({
         userId: admin.id,
         sessionId: refreshTokenHash,
     });
@@ -54,7 +59,7 @@ export const loginAdminAuthService = async (data: { email: string, password: str
         table: ADMIN_USER_TABLE,
         data: {
             refresh_token_hash: refreshTokenHash,
-            refresh_token_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+            refresh_token_expires_at: refreshTokenExpiresAt,
         },
         where: [
             {
@@ -74,13 +79,15 @@ export const loginAdminAuthService = async (data: { email: string, password: str
             updated_at: admin.updated_at,
         },
         accessToken,
+        accessTokenExpiresAt,
         refreshToken,
+        refreshTokenExpiresAt,
     };
 }
 
-export const refreshAdminTokensService = async (refreshToken: string) => {
+export const refreshAdminTokensService = async (refreshToken: string | undefined) => {
     if (!refreshToken) {
-        throw new AppError("Refresh token is required", 400);
+        throw new AppError("Refresh token is required", 401);
     }
     const adminUser = await fetchOneFromTable({
         table: ADMIN_USER_TABLE,
@@ -99,7 +106,8 @@ export const refreshAdminTokensService = async (refreshToken: string) => {
     }
     const newRefreshToken = generateRefreshToken();
     const refreshTokenHash = hashToken(newRefreshToken);
-    const accessToken = await generateAdminAccessToken({
+    const refreshTokenExpiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_MS);
+    const { accessToken, accessTokenExpiresAt } = await generateAdminAccessToken({
         userId: adminUser.id,
         sessionId: refreshTokenHash,
     });
@@ -107,7 +115,7 @@ export const refreshAdminTokensService = async (refreshToken: string) => {
         table: ADMIN_USER_TABLE,
         data: {
             refresh_token_hash: refreshTokenHash,
-            refresh_token_expires_at: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+            refresh_token_expires_at: refreshTokenExpiresAt,
         },
         where: [{
             field: "id",
@@ -115,5 +123,39 @@ export const refreshAdminTokensService = async (refreshToken: string) => {
             value: adminUser.id,
         }],
     });
-    return { accessToken, refreshToken: newRefreshToken };
+    return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken, refreshTokenExpiresAt };
+}
+
+/**
+ * Ends the admin's session by clearing the stored refresh-token hash.
+ * Idempotent: an unknown or missing token is already "logged out".
+ */
+export const logoutAdminService = async (refreshToken: string | undefined) => {
+    if (!refreshToken) {
+        return;
+    }
+    const adminUser = await fetchOneFromTable({
+        table: ADMIN_USER_TABLE,
+        where: [{
+            field: "refresh_token_hash",
+            operator: "=",
+            value: hashToken(refreshToken),
+        }],
+        useSoftDelete: false,
+    }) as AdminUserInterface | null;
+    if (!adminUser) {
+        return;
+    }
+    await updateOneInTable({
+        table: ADMIN_USER_TABLE,
+        data: {
+            refresh_token_hash: null,
+            refresh_token_expires_at: null,
+        },
+        where: [{
+            field: "id",
+            operator: "=",
+            value: adminUser.id,
+        }],
+    });
 }

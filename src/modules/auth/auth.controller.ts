@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from "express";
-import { AppError } from "../../shared/errors/AppError.js";
 import {
     sendOtpForLoginService,
     verifyOtpForLoginService,
@@ -8,9 +7,33 @@ import {
     verifyOtpForPasswordResetService,
     resetPasswordService,
     refreshTokensService,
-    logoutService
+    logoutService,
+    getAuthConfigService
 } from "./auth.service.js";
 import { responseSend } from '../../helpers/response-send.js';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../../utils/refreshTokenCookie.js";
+
+/**
+ * Moves the refresh token out of the JSON body and into the httpOnly cookie,
+ * so it is never readable by page JavaScript.
+ */
+const sendSession = <T extends { refreshToken: string, refreshTokenExpiresAt: Date }>(
+    res: Response,
+    message: string,
+    session: T,
+) => {
+    const { refreshToken, refreshTokenExpiresAt, ...body } = session;
+    setRefreshCookie(res, "user", refreshToken, refreshTokenExpiresAt);
+    responseSend(res, 200, message, body);
+}
+
+export const getAuthConfig = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        responseSend(res, 200, "Auth config", getAuthConfigService());
+    } catch (error) {
+        next(error);
+    }
+}
 
 export const sendOtpForLogin = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -26,7 +49,7 @@ export const verifyOtpForLogin = async (req: Request, res: Response, next: NextF
     try {
         const data = await verifyOtpForLoginService(req.body);
 
-        responseSend(res, 200, "Login successful", data);
+        sendSession(res, "Login successful", data);
     } catch (error) {
         next(error);
     }
@@ -36,7 +59,7 @@ export const loginWithPassword = async (req: Request, res: Response, next: NextF
     try {
         const data = await loginWithPasswordService(req.body);
 
-        responseSend(res, 200, "Login successful", data);
+        sendSession(res, "Login successful", data);
     } catch (error) {
         next(error);
     }
@@ -75,20 +98,22 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
 export const refreshTokens = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // refreshTOken is in headers: { "refresh-token": "refresh_token" }
-        const data = await refreshTokensService(req.headers["refresh-token"] as string);
+        const data = await refreshTokensService(readRefreshCookie(req, "user"));
 
-        responseSend(res, 200, "Tokens refreshed successfully", data);
+        sendSession(res, "Tokens refreshed successfully", data);
     } catch (error) {
+        // The cookie is deliberately not cleared on a 401: when two tabs
+        // refresh at once, the loser's 401 can arrive after the winner's
+        // Set-Cookie, and clearing would wipe the freshly rotated token.
         next(error);
     }
 }
 
 export const logout = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        // refreshToken is in headers: { "refresh-token": "refresh_token" }, same as refresh-tokens
-        await logoutService(req.headers["refresh-token"] as string);
+        await logoutService(readRefreshCookie(req, "user"));
 
+        clearRefreshCookie(res, "user");
         responseSend(res, 200, "Logged out successfully", null);
     } catch (error) {
         next(error);

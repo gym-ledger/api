@@ -4,9 +4,25 @@ import { pinoHttp } from "pino-http";
 
 const pinoFactory = pinoModule.pino;
 
+// Credentials that must never reach a log line. Applied to every log call,
+// so it also covers errors that happen to carry a request or response.
+const REDACTED_PATHS = [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    'req.headers["refresh-token"]',
+    'res.headers["set-cookie"]',
+    "headers.authorization",
+    "headers.cookie",
+    'headers["refresh-token"]',
+];
+
 // 1. Core Pino Instance
 export const logger = pinoFactory({
     level: env.LOG_LEVEL || "info",
+    redact: {
+        paths: REDACTED_PATHS,
+        censor: "[REDACTED]",
+    },
     transport:
         env.NODE_ENV === "development"
             ? {

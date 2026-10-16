@@ -4,6 +4,7 @@ import cors from "cors";
 import compression from "compression";
 
 import { env } from "./config/env.js";
+import { API_PREFIX } from "./config/constants.js";
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import router from "./modules/index/index.routes.js";
@@ -18,7 +19,13 @@ if (env.TRUST_PROXY_HOPS !== undefined) {
 }
 
 app.use(helmet());
-app.use(cors());
+// Only the configured front-ends may call the API from a browser, and with
+// credentials (the refresh-token cookie). In development, with no list set,
+// any origin is reflected so local ports just work.
+app.use(cors({
+    origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : env.NODE_ENV !== "production",
+    credentials: true,
+}));
 app.use(compression());
 app.use(express.json());
 
@@ -29,7 +36,7 @@ app.get("/health", (_, res) => {
     res.json({ ok: true });
 });
 
-app.use("/api/v1", router);
+app.use(API_PREFIX, router);
 
 // app.use("/api/v1/admin", adminRoutes);
 // app.use("/api/v1/app", appRoutes);
