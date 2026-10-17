@@ -317,18 +317,20 @@ Output:
 - wins: 0 to 3 items, each at most 15 words. Only real wins from the data (PRs, planned sessions done, volume up, weight on track).
 - focus: 1 or 2 items for next week, each a different change. title at most 6 words; detail at most 30 words saying exactly what to do. Pick them in this order of priority, skipping what doesn't apply: discomfort, body-weight pace, missed planned sessions, stalled lifts, muscles below usual.`;
 
-export const generateCheckinContent = async (stats: WeeklyCheckinStats) => {
+export const generateCheckinContent = async (userId: string, stats: WeeklyCheckinStats) => {
     const { data, model } = await generateStructuredJson({
         system: SYSTEM_PROMPT,
         user: JSON.stringify(stats),
         schemaName: "weekly_checkin",
         schema: CHECKIN_CONTENT_JSON_SCHEMA,
+        feature: "weekly_checkin",
+        userId,
+        validate: (raw) => {
+            const parsed = checkinContentSchema.safeParse(raw);
+            return parsed.success ? parsed.data : null;
+        },
     });
-    const parsed = checkinContentSchema.safeParse(data);
-    if (!parsed.success) {
-        throw new LlmUnavailableError("bad_output", "Model output failed validation");
-    }
-    return { content: parsed.data, model };
+    return { content: data, model };
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +536,7 @@ export const getWeeklyCheckinService = async (userId?: string) => {
     }
 
     try {
-        const { content, model } = await generateCheckinContent(stats);
+        const { content, model } = await generateCheckinContent(userId, stats);
         const ready = await completeWeeklyCheckinRepository(claimed.id, content, model);
         // Any "couldn't generate" notice is out of date now.
         await clearNotificationGroupRepository(userId, CHECKIN_NOTIFICATION_GROUP).catch((error) => {

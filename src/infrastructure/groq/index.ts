@@ -1,6 +1,7 @@
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { redis } from "../redis/index.js";
+import { AiRequestLogEntry, logAiRequest } from "./aiRequestLog.js";
 
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -41,20 +42,56 @@ const reserveDailyRequest = async (): Promise<void> => {
 
 /**
  * One chat completion whose reply is constrained to `schema` (Groq strict
- * structured outputs). Returns the parsed JSON; the caller still validates it.
+ * structured outputs). `validate` checks the parsed JSON and returns the
+ * typed value, or null to reject it as bad output.
+ *
+ * Every attempt is recorded in `ai_requests` (metadata only, never the
+ * prompt or reply) under `feature` and `userId`.
  */
-export const generateStructuredJson = async (params: {
+export const generateStructuredJson = async <T>(params: {
     system: string,
     user: string,
     schemaName: string,
     schema: Record<string, unknown>,
     maxTokens?: number,
-}): Promise<{ data: unknown, model: string }> => {
+    feature: string,
+    userId?: string | null,
+    validate: (data: unknown) => T | null,
+}): Promise<{ data: T, model: string }> => {
+    const log: Omit<AiRequestLogEntry, "status"> = {
+        userId: params.userId ?? null,
+        feature: params.feature,
+        model: env.GROQ_MODEL,
+        promptTokens: null,
+        completionTokens: null,
+        latencyMs: null,
+    };
+    try {
+        const result = await callModel(params, log);
+        logAiRequest({ ...log, status: "success" });
+        return result;
+    } catch (error) {
+        // Anything else (e.g. Redis down while reserving the budget) means
+        // the call was never attempted, so there is nothing to record.
+        if (error instanceof LlmUnavailableError) {
+            logAiRequest({ ...log, status: error.reason });
+        }
+        throw error;
+    }
+}
+
+/** Fills `log` (model, tokens, latency) as it learns them. */
+const callModel = async <T>(
+    params: Parameters<typeof generateStructuredJson<T>>[0],
+    log: Omit<AiRequestLogEntry, "status">,
+): Promise<{ data: T, model: string }> => {
     if (!env.GROQ_API_KEY) {
         throw new LlmUnavailableError("not_configured", "GROQ_API_KEY is not set");
     }
     await reserveDailyRequest();
 
+    const startedAt = performance.now();
+    const elapsed = () => Math.round(performance.now() - startedAt);
     let res: Response;
     try {
         res = await fetch(GROQ_CHAT_URL, {
@@ -88,6 +125,7 @@ export const generateStructuredJson = async (params: {
             signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
     } catch (error) {
+        log.latencyMs = elapsed();
         if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
             throw new LlmUnavailableError("timeout", "Model request timed out");
         }
@@ -95,6 +133,7 @@ export const generateStructuredJson = async (params: {
     }
 
     if (!res.ok) {
+        log.latencyMs = elapsed();
         // The body can echo request details; log it here, never return it.
         const body = await res.text().catch(() => "");
         logger.warn({ status: res.status, body: body.slice(0, 500) }, "Groq request failed");
@@ -104,17 +143,35 @@ export const generateStructuredJson = async (params: {
         );
     }
 
-    const json = await res.json() as {
+    let json: {
         model?: string,
         choices?: { message?: { content?: string | null }, finish_reason?: string }[],
+        usage?: { prompt_tokens?: number, completion_tokens?: number },
     };
+    try {
+        json = await res.json() as typeof json;
+    } catch {
+        log.latencyMs = elapsed();
+        throw new LlmUnavailableError("bad_output", "Model provider returned a non-JSON body");
+    }
+    log.latencyMs = elapsed();
+    log.model = json.model ?? env.GROQ_MODEL;
+    log.promptTokens = json.usage?.prompt_tokens ?? null;
+    log.completionTokens = json.usage?.completion_tokens ?? null;
+
     const content = json.choices?.[0]?.message?.content;
     if (!content) {
         throw new LlmUnavailableError("bad_output", `Model returned no content (${json.choices?.[0]?.finish_reason ?? "unknown"})`);
     }
+    let parsed: unknown;
     try {
-        return { data: JSON.parse(content), model: json.model ?? env.GROQ_MODEL };
+        parsed = JSON.parse(content);
     } catch {
         throw new LlmUnavailableError("bad_output", "Model returned invalid JSON");
     }
+    const data = params.validate(parsed);
+    if (data === null) {
+        throw new LlmUnavailableError("bad_output", "Model output failed validation");
+    }
+    return { data, model: log.model };
 }
