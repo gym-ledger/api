@@ -1553,7 +1553,7 @@ export const discardAlarmService = async (data: {
 const DEFAULT_TIMEZONE = "UTC";
 const DEFAULT_WEIGHT_UNITS = "kg";
 
-const getUserHealthPreferencesOrDefault = async (
+export const getUserHealthPreferencesOrDefault = async (
     userId: string,
 ): Promise<{ timezone: string, weight_units: string }> => {
     const prefs = await fetchOneFromTable({
@@ -1570,7 +1570,7 @@ const getUserHealthPreferencesOrDefault = async (
 }
 
 /** "YYYY-MM-DD" for `date` as seen in `timezone` — the user's local calendar day. */
-const localDateString = (date: Date, timezone: string): string => {
+export const localDateString = (date: Date, timezone: string): string => {
     try {
         return new Intl.DateTimeFormat("en-CA", {
             timeZone: timezone,
@@ -1590,13 +1590,13 @@ const localDateString = (date: Date, timezone: string): string => {
 }
 
 /** 1=Mon..7=Sun for a "YYYY-MM-DD" date string. */
-const isoWeekdayOf = (dateStr: string): number => {
+export const isoWeekdayOf = (dateStr: string): number => {
     const [y, m, d] = dateStr.split("-").map(Number);
     const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
     return day === 0 ? 7 : day;
 }
 
-const addDays = (dateStr: string, delta: number): string => {
+export const addDays = (dateStr: string, delta: number): string => {
     const [y, m, d] = dateStr.split("-").map(Number);
     const dt = new Date(Date.UTC(y, m - 1, d));
     dt.setUTCDate(dt.getUTCDate() + delta);

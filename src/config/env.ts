@@ -91,6 +91,17 @@ const envSchema = z.object({
     // Content SID ("HX...") of an approved WhatsApp *authentication* template
     // whose variable {{1}} is the code.
     TWILIO_WHATSAPP_CONTENT_SID: optionalString,
+
+    // AI weekly check-ins (Groq, OpenAI-compatible API). Unset key = the
+    // check-in card still shows the week's numbers, just without the
+    // written coach note.
+    GROQ_API_KEY: optionalString,
+    // Must support strict JSON-schema output on Groq (gpt-oss-120b/20b do).
+    GROQ_MODEL: optionalString.transform((v) => v ?? "openai/gpt-oss-120b"),
+    // Our own ceiling on model calls per UTC day, kept under Groq's free
+    // per-day quota (about 1,000 on the large models) so a burst of users
+    // can't push every request into 429s.
+    GROQ_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(0).default(900),
 }).superRefine((env, ctx) => {
     const requireKey = (key: keyof typeof env, why: string) => {
         if (!env[key]) {

@@ -5,7 +5,11 @@ import {
     updateUserPreferencesService,
     getUserSelfProfileService,
     updateUserNameService,
-    changeUserPasswordService
+    changeUserPasswordService,
+    getWeightGoalService,
+    suggestWeightGoalDateService,
+    saveWeightGoalService,
+    clearWeightGoalService
 } from "./users.profile.service.js";
 
 
@@ -51,6 +55,45 @@ export const changeUserPassword = async (req: Request, res: Response, next: Next
     try {
         await changeUserPasswordService({ userId: req.userId as string, data: req.body });
         responseSend(res, 200, "Password updated successfully", null);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const getWeightGoal = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getWeightGoalService({ userId: req.userId as string });
+        responseSend(res, 200, "Weight goal fetched successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const suggestWeightGoalDate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await suggestWeightGoalDateService({
+            userId: req.userId as string,
+            query: req.query,
+        });
+        responseSend(res, 200, "Goal date suggested successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const saveWeightGoal = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await saveWeightGoalService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, "Weight goal saved successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const clearWeightGoal = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await clearWeightGoalService({ userId: req.userId as string });
+        responseSend(res, 200, "Weight goal cleared successfully", null);
     } catch (error) {
         next(error);
     }

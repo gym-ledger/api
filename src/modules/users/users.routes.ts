@@ -4,6 +4,8 @@ import usersProfileRouter from './users.profile/users.profile.routes.js';
 import usersWorkoutRouter from './users.workout/users.workout.routes.js';
 import usersExercisesRouter from './users.exercises/users.exercises.routes.js';
 import usersMuscleSignalsRouter from './users.muscleSignals/users.muscleSignals.routes.js';
+import usersCheckinsRouter from './users.checkins/users.checkins.routes.js';
+import usersNotificationsRouter from './users.notifications/users.notifications.routes.js';
 
 const usersRouter = Router();
 
@@ -12,4 +14,6 @@ usersRouter.use("/weight", usersWeightRouter);
 usersRouter.use("/workout", usersWorkoutRouter);
 usersRouter.use("/exercises", usersExercisesRouter);
 usersRouter.use("/muscle-signals", usersMuscleSignalsRouter);
+usersRouter.use("/checkins", usersCheckinsRouter);
+usersRouter.use("/notifications", usersNotificationsRouter);
 export default usersRouter;
