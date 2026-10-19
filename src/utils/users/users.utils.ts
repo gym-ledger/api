@@ -13,5 +13,6 @@ export const toPublicUser = (user: UsersInterface) => ({
     phone_country_code: user.phone_country_code ?? null,
     phone_number: user.phone_number ?? null,
     has_password: !!user.password_hash,
+    onboarded_at: user.onboarded_at ?? null,
     created_at: user.created_at,
 });

@@ -15,6 +15,9 @@ export interface UsersInterface {
 
     password_hash: string | null;
 
+    /** Set when the user finishes or skips onboarding; null sends them to it. */
+    onboarded_at: Date | null;
+
     deleted_at: Date;
 
     created_at: Date;
@@ -50,6 +53,10 @@ export const USERS_SCHEMA = {
     },
     password_hash: {
         type: "string",
+        allowNull: true,
+    },
+    onboarded_at: {
+        type: "date",
         allowNull: true,
     },
     deleted_at: {

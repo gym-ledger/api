@@ -9,6 +9,15 @@ export type WeightGoalPace = WeightGoalPreset | "custom";
 
 export type CustomPaceUnit = "pct" | "weight";
 
+export const TRAINING_GOALS = ["build_muscle", "get_stronger", "lose_fat", "general_fitness"] as const;
+export type TrainingGoal = typeof TRAINING_GOALS[number];
+
+export const EXPERIENCE_LEVELS = ["beginner", "intermediate", "advanced"] as const;
+export type ExperienceLevel = typeof EXPERIENCE_LEVELS[number];
+
+export const EQUIPMENT_OPTIONS = ["full_gym", "home_dumbbells", "bodyweight"] as const;
+export type Equipment = typeof EQUIPMENT_OPTIONS[number];
+
 export interface UserHealthPreferencesInterface {
     id: string;
 
@@ -40,6 +49,14 @@ export interface UserHealthPreferencesInterface {
     goal_start_weight: number | null;
 
     goal_set_on: string | null;
+
+    training_goal: TrainingGoal | null;
+
+    experience_level: ExperienceLevel | null;
+
+    training_days_per_week: number | null;
+
+    equipment: Equipment | null;
 
     deleted_at: Date;
 

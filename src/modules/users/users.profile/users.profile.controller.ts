@@ -9,7 +9,9 @@ import {
     getWeightGoalService,
     suggestWeightGoalDateService,
     saveWeightGoalService,
-    clearWeightGoalService
+    clearWeightGoalService,
+    completeOnboardingService,
+    skipOnboardingService
 } from "./users.profile.service.js";
 
 
@@ -94,6 +96,24 @@ export const clearWeightGoal = async (req: Request, res: Response, next: NextFun
     try {
         await clearWeightGoalService({ userId: req.userId as string });
         responseSend(res, 200, "Weight goal cleared successfully", null);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const completeOnboarding = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await completeOnboardingService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, "Onboarding completed successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const skipOnboarding = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await skipOnboardingService({ userId: req.userId as string });
+        responseSend(res, 200, "Onboarding skipped", data);
     } catch (error) {
         next(error);
     }

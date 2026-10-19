@@ -1,4 +1,10 @@
-import { USER_HEALTH_PREFERENCES_TABLE, UserHealthPreferencesInterface } from "../../../db/schemas/users/userHealthPreferences.schema.js";
+import {
+    EQUIPMENT_OPTIONS,
+    EXPERIENCE_LEVELS,
+    TRAINING_GOALS,
+    USER_HEALTH_PREFERENCES_TABLE,
+    UserHealthPreferencesInterface,
+} from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import { USERS_TABLE, UsersInterface } from "../../../db/schemas/users/users.schema.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { resolveSupportedTimezone } from "../../../utils/timezone.js";
@@ -27,6 +33,36 @@ import {
 
 const NAME_MAX_LENGTH = 100;
 
+const PREFERENCE_FIELDS = [
+    "timezone",
+    "weight_units",
+    "height_units",
+    "height",
+    "training_goal",
+    "experience_level",
+    "training_days_per_week",
+    "equipment",
+] as const;
+
+const TRAINING_FIELDS = ["training_goal", "experience_level", "training_days_per_week", "equipment"] as const;
+
+const toPreferencesView = (preferences: UserHealthPreferencesInterface) => ({
+    timezone: preferences.timezone,
+    weight_units: preferences.weight_units,
+    height_units: preferences.height_units,
+    height: preferences.height,
+    training_goal: preferences.training_goal ?? null,
+    experience_level: preferences.experience_level ?? null,
+    training_days_per_week: preferences.training_days_per_week ?? null,
+    equipment: preferences.equipment ?? null,
+});
+
+const assertOneOf = (value: unknown, options: readonly string[], label: string) => {
+    if (typeof value !== "string" || !options.includes(value)) {
+        throw new AppError(`${label} must be one of: ${options.join(", ")}`, 400);
+    }
+}
+
 export const getUserPreferencesService = async ({
     userId,
 }: {
@@ -39,7 +75,7 @@ export const getUserPreferencesService = async ({
             operator: "=",
             value: userId,
         }],
-        select: ["timezone", "weight_units", "height_units", "height"],
+        select: [...PREFERENCE_FIELDS],
     }) as UserHealthPreferencesInterface | null;
     return {
         preferences,
@@ -72,6 +108,25 @@ export const updateUserPreferencesService = async ({
     }
     if (data.height) {
         toUpdate.height = data.height;
+    }
+    if (data.training_goal !== undefined) {
+        assertOneOf(data.training_goal, TRAINING_GOALS, "Training goal");
+        toUpdate.training_goal = data.training_goal;
+    }
+    if (data.experience_level !== undefined) {
+        assertOneOf(data.experience_level, EXPERIENCE_LEVELS, "Experience level");
+        toUpdate.experience_level = data.experience_level;
+    }
+    if (data.training_days_per_week !== undefined) {
+        const days = Number(data.training_days_per_week);
+        if (!Number.isInteger(days) || days < 1 || days > 7) {
+            throw new AppError("Training days per week must be a whole number from 1 to 7", 400);
+        }
+        toUpdate.training_days_per_week = days;
+    }
+    if (data.equipment !== undefined) {
+        assertOneOf(data.equipment, EQUIPMENT_OPTIONS, "Equipment");
+        toUpdate.equipment = data.equipment;
     }
     let preferences = await fetchOneFromTable({
         table: USER_HEALTH_PREFERENCES_TABLE,
@@ -113,12 +168,7 @@ export const updateUserPreferencesService = async ({
         }) as UserHealthPreferencesInterface;
     }
     return {
-        preferences: {
-            timezone: preferences.timezone,
-            weight_units: preferences.weight_units,
-            height_units: preferences.height_units,
-            height: preferences.height,
-        },
+        preferences: toPreferencesView(preferences),
     }
 }
 
@@ -135,6 +185,45 @@ const fetchUserOrThrow = async (userId: string) => {
 
 export const getUserSelfProfileService = async ({ userId }: { userId: string }) => {
     return toPublicUser(await fetchUserOrThrow(userId));
+}
+
+/** Leaves an earlier `onboarded_at` in place, so finishing after a skip keeps the first date. */
+const markOnboarded = async (userId: string) => {
+    const user = await fetchUserOrThrow(userId);
+    if (user.onboarded_at) {
+        return user;
+    }
+    return await updateOneInTable({
+        table: USERS_TABLE,
+        data: { onboarded_at: new Date(), updated_at: new Date() },
+        where: [{ field: "id", operator: "=", value: userId }],
+    }) as UsersInterface;
+}
+
+/**
+ * Saves the onboarding wizard: the four training answers plus timezone,
+ * units and height (which the preferences row needs to exist), then marks
+ * the user onboarded.
+ */
+export const completeOnboardingService = async ({
+    userId,
+    data,
+}: {
+    userId: string;
+    data: Partial<UserHealthPreferencesInterface>;
+}) => {
+    for (const field of TRAINING_FIELDS) {
+        if (data?.[field] == null) {
+            throw new AppError(`${field} is required`, 400);
+        }
+    }
+    const { preferences } = await updateUserPreferencesService({ userId, data });
+    const user = await markOnboarded(userId);
+    return { user: toPublicUser(user), preferences };
+}
+
+export const skipOnboardingService = async ({ userId }: { userId: string }) => {
+    return toPublicUser(await markOnboarded(userId));
 }
 
 /**

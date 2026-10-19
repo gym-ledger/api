@@ -9,7 +9,9 @@ import {
     getWeightGoal,
     suggestWeightGoalDate,
     saveWeightGoal,
-    clearWeightGoal
+    clearWeightGoal,
+    completeOnboarding,
+    skipOnboarding
 } from './users.profile.controller.js';
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
 
@@ -24,5 +26,7 @@ usersProfileRouter.get("/goal", verifyUserToken, asyncHandler(getWeightGoal));
 usersProfileRouter.get("/goal/suggestion", verifyUserToken, asyncHandler(suggestWeightGoalDate));
 usersProfileRouter.put("/goal", verifyUserToken, asyncHandler(saveWeightGoal));
 usersProfileRouter.delete("/goal", verifyUserToken, asyncHandler(clearWeightGoal));
+usersProfileRouter.put("/onboarding", verifyUserToken, asyncHandler(completeOnboarding));
+usersProfileRouter.post("/onboarding/skip", verifyUserToken, asyncHandler(skipOnboarding));
 
 export default usersProfileRouter;
