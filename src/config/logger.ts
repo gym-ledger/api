@@ -23,6 +23,11 @@ export const logger = pinoFactory({
         paths: REDACTED_PATHS,
         censor: "[REDACTED]",
     },
+    // Call sites log `{ error }`; pino only serializes Errors under `err` by
+    // default, so without this every error is written as `{}`.
+    serializers: {
+        error: pinoModule.stdSerializers.err,
+    },
     transport:
         env.NODE_ENV === "development"
             ? {
