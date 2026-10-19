@@ -332,6 +332,50 @@ export const fetchWeeklyCheckinRepository = async (
     }
 }
 
+export const fetchWeeklyCheckinByIdRepository = async (
+    id: string,
+): Promise<UserWeeklyCheckinsInterface | null> => {
+    const query = `
+    SELECT ${CHECKIN_COLUMNS}
+    FROM user_weekly_checkins
+    WHERE id = $1
+        AND deleted_at IS NULL
+    `;
+    try {
+        const result = await pg.query(query, [id]);
+        return result.rows[0] ?? null;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to fetch weekly check-in", 500);
+    }
+}
+
+/**
+ * Makes a failed check-in due for retry right now (NULL counts as due both
+ * here and in the claim). Returns null unless the row exists and is 'failed'.
+ */
+export const makeWeeklyCheckinRetryDueRepository = async (
+    id: string,
+): Promise<UserWeeklyCheckinsInterface | null> => {
+    const query = `
+    UPDATE user_weekly_checkins
+    SET next_retry_at = NULL
+    WHERE id = $1
+        AND status = 'failed'
+        AND deleted_at IS NULL
+    RETURNING ${CHECKIN_COLUMNS}
+    `;
+    try {
+        const result = await pg.query(query, [id]);
+        return result.rows[0] ?? null;
+    } catch (error) {
+        console.log(query);
+        console.log(error);
+        throw new AppError("Failed to update weekly check-in", 500);
+    }
+}
+
 /**
  * Claims the week for generation: inserts a 'pending' row, or takes over one
  * that is due a retry (failed past its retry time, or pending and stale).

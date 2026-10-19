@@ -8,6 +8,7 @@ import {
     listUsersService,
     viewUserService,
 } from "./adminAnalytics.service.js";
+import { retryWeeklyCheckinService } from "../../users/users.checkins/users.checkins.service.js";
 
 export const getOverviewForAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -58,6 +59,15 @@ export const viewUserForAdmin = async (req: Request, res: Response, next: NextFu
     try {
         const data = await viewUserService(req.params.id as string);
         return responseSend(res, 200, "User fetched successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const retryCheckinForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await retryWeeklyCheckinService(req.params.id as string);
+        return responseSend(res, 200, "Check-in retried", data);
     } catch (error) {
         next(error);
     }

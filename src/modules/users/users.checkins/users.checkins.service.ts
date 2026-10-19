@@ -36,10 +36,12 @@ import {
     failWeeklyCheckinRepository,
     fetchExerciseWeekProgressRepository,
     fetchLastActivityRepository,
+    makeWeeklyCheckinRetryDueRepository,
     fetchMuscleWeekSetsRepository,
     saveSkippedWeeklyCheckinRepository,
     fetchWeekSessionSummaryRepository,
     fetchWeekSetCountsRepository,
+    fetchWeeklyCheckinByIdRepository,
     fetchWeeklyCheckinRepository,
     fetchWeightEntriesBetweenRepository,
 } from "./users.checkins.repository.js";
@@ -491,7 +493,43 @@ export const getWeeklyCheckinService = async (userId?: string) => {
     const todayStr = localDateString(new Date(), timezone);
     const currentWeekStart = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
     const weekStart = addDays(currentWeekStart, -7);
+    return resolveWeeklyCheckin(userId, weekStart, timezone, weight_units);
+}
 
+/**
+ * Admin "retry now" for a failed check-in: drops the wait before the next
+ * retry and runs the same path the user's request would, for that row's week.
+ * Returns status only; the written note stays out of the admin panel.
+ */
+export const retryWeeklyCheckinService = async (checkinId?: string) => {
+    if (!checkinId || !isValidUUID(checkinId)) {
+        throw new AppError("Invalid check-in id", 400);
+    }
+    const row = await makeWeeklyCheckinRetryDueRepository(checkinId);
+    if (!row) {
+        const current = await fetchWeeklyCheckinByIdRepository(checkinId);
+        if (!current) {
+            throw new AppError("Check-in not found", 404);
+        }
+        throw new AppError(`Only failed check-ins can be retried (this one is ${current.status})`, 409);
+    }
+    const { timezone, weight_units } = await getUserHealthPreferencesOrDefault(row.user_id);
+    const result = await resolveWeeklyCheckin(row.user_id, row.week_start, timezone, weight_units);
+    const after = await fetchWeeklyCheckinByIdRepository(checkinId);
+    return {
+        id: checkinId,
+        status: after?.status ?? result.status,
+        attempts: after?.attempts ?? row.attempts,
+        next_retry_at: after?.next_retry_at ?? null,
+    };
+}
+
+const resolveWeeklyCheckin = async (
+    userId: string,
+    weekStart: string,
+    timezone: string,
+    weightUnits: string,
+) => {
     const existing = await fetchWeeklyCheckinRepository(userId, weekStart);
     if (existing) {
         const stalePending = existing.status === "pending"
@@ -501,7 +539,7 @@ export const getWeeklyCheckinService = async (userId?: string) => {
         }
     }
 
-    const stats = await computeWeeklyCheckinStats(userId, timezone, weight_units, weekStart);
+    const stats = await computeWeeklyCheckinStats(userId, timezone, weightUnits, weekStart);
 
     // Once a week has passed the gate (pending/failed) it stays on the model path.
     if (!existing || existing.status === "skipped") {
