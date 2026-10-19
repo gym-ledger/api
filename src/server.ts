@@ -7,7 +7,7 @@ import { connectRedis } from "./infrastructure/redis/index.js";
 async function bootstrap() {
     try {
         await connectPostgres();
-        // await connectRedis();
+        await connectRedis();
 
         const server = app.listen(env.PORT, () => {
             console.log(`Server running on ${env.PORT}`);
