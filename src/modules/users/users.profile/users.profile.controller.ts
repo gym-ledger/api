@@ -13,7 +13,9 @@ import {
     endWeightGoalService,
     getWeightGoalHistoryService,
     completeOnboardingService,
-    skipOnboardingService
+    skipOnboardingService,
+    acceptPrivacyPolicyService,
+    setAiCheckinsService
 } from "./users.profile.service.js";
 
 
@@ -134,6 +136,24 @@ export const skipOnboarding = async (req: Request, res: Response, next: NextFunc
     try {
         const data = await skipOnboardingService({ userId: req.userId as string });
         responseSend(res, 200, "Onboarding skipped", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const acceptPrivacyPolicy = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await acceptPrivacyPolicyService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, "Privacy policy accepted", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const setAiCheckins = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await setAiCheckinsService({ userId: req.userId as string, data: req.body });
+        responseSend(res, 200, data.ai_checkins_enabled ? "AI check-ins turned on" : "AI check-ins turned off", data);
     } catch (error) {
         next(error);
     }

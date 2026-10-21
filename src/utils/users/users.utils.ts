@@ -1,3 +1,4 @@
+import { PRIVACY_POLICY_VERSION } from "../../config/constants.js";
 import { UsersInterface } from "../../db/schemas/users/users.schema.js";
 
 /**
@@ -14,5 +15,9 @@ export const toPublicUser = (user: UsersInterface) => ({
     phone_number: user.phone_number ?? null,
     has_password: !!user.password_hash,
     onboarded_at: user.onboarded_at ?? null,
+    // false = the web app asks the user to accept the current policy first.
+    privacy_policy_accepted: user.privacy_policy_version === PRIVACY_POLICY_VERSION,
+    current_privacy_policy_version: PRIVACY_POLICY_VERSION,
+    ai_checkins_enabled: !!user.ai_checkins_enabled,
     created_at: user.created_at,
 });

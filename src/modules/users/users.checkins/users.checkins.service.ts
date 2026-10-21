@@ -18,6 +18,7 @@ import {
     postNotificationRepository,
 } from "../users.notifications/users.notifications.repository.js";
 import { fetchWeightGoalRepository } from "../users.profile/users.profile.repository.js";
+import { isAiCheckinsEnabledService } from "../users.profile/users.profile.service.js";
 import {
     fetchRequiredWeekdaysRepository,
     fetchUserAssignmentsRepository,
@@ -319,10 +320,41 @@ Output:
 - wins: 0 to 3 items, each at most 15 words. Only real wins from the data (PRs, planned sessions done, volume up, weight on track).
 - focus: 1 or 2 items for next week, each a different change. title at most 6 words; detail at most 30 words saying exactly what to do. Pick them in this order of priority, skipping what doesn't apply: discomfort, body-weight pace, missed planned sessions, stalled lifts, muscles below usual.`;
 
+/**
+ * The only data that leaves the server for the model provider. The stored
+ * stats keep everything; this drops what the note doesn't need: calendar
+ * dates (week, goal date) and absolute body weights (average, target), which
+ * are the most personal numbers. Body weight goes as changes and trends only.
+ * No name, email, phone, user id or IP is ever in the request — the provider
+ * sees the API server, not the user. Keep in sync with the AI section of the
+ * privacy policy (gym-app-nextjs, /privacy).
+ */
+export const toModelInput = (stats: WeeklyCheckinStats) => ({
+    weight_units: stats.weight_units,
+    training: stats.training,
+    exercises: stats.exercises,
+    muscles: stats.muscles,
+    weight: {
+        weigh_ins: stats.weight.weigh_ins,
+        weigh_in_days: stats.weight.weigh_in_days,
+        change_vs_last_week: stats.weight.change_vs_last_week,
+        trend_per_week: stats.weight.trend_per_week,
+        trend_pct_per_week: stats.weight.trend_pct_per_week,
+    },
+    goal: {
+        type: stats.goal.type,
+        preset: stats.goal.preset,
+        weeks_left: stats.goal.weeks_left,
+        target_pct_per_week: stats.goal.target_pct_per_week,
+        preset_daily_kcal: stats.goal.preset_daily_kcal,
+        pace_status: stats.goal.pace_status,
+    },
+});
+
 export const generateCheckinContent = async (userId: string, stats: WeeklyCheckinStats) => {
     const { data, model } = await generateStructuredJson({
         system: SYSTEM_PROMPT,
-        user: JSON.stringify(stats),
+        user: JSON.stringify(toModelInput(stats)),
         schemaName: "weekly_checkin",
         schema: CHECKIN_CONTENT_JSON_SCHEMA,
         feature: "weekly_checkin",
@@ -453,7 +485,8 @@ const postCheckinSkippedNotification = async (userId: string, stats: WeeklyCheck
 // Service
 // ---------------------------------------------------------------------------
 
-export type WeeklyCheckinResponseStatus = "ready" | "pending" | "failed" | "skipped";
+/** "disabled" = the user hasn't turned AI check-ins on; nothing is computed or sent. */
+export type WeeklyCheckinResponseStatus = "ready" | "pending" | "failed" | "skipped" | "disabled";
 
 const toCheckinView = (row: UserWeeklyCheckinsInterface) => ({
     id: row.id,
@@ -489,6 +522,10 @@ export const getWeeklyCheckinService = async (userId?: string) => {
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
+    // Opt-in: no row, no "get AI insights" notices, no model call.
+    if (!await isAiCheckinsEnabledService(userId)) {
+        return { status: "disabled" as const, checkin: null };
+    }
     const { timezone, weight_units } = await getUserHealthPreferencesOrDefault(userId);
     const todayStr = localDateString(new Date(), timezone);
     const currentWeekStart = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
@@ -504,6 +541,10 @@ export const getWeeklyCheckinService = async (userId?: string) => {
 export const retryWeeklyCheckinService = async (checkinId?: string) => {
     if (!checkinId || !isValidUUID(checkinId)) {
         throw new AppError("Invalid check-in id", 400);
+    }
+    const target = await fetchWeeklyCheckinByIdRepository(checkinId);
+    if (target && !await isAiCheckinsEnabledService(target.user_id)) {
+        throw new AppError("This user has turned AI check-ins off", 409);
     }
     const row = await makeWeeklyCheckinRetryDueRepository(checkinId);
     if (!row) {

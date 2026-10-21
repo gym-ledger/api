@@ -18,6 +18,16 @@ export interface UsersInterface {
     /** Set when the user finishes or skips onboarding; null sends them to it. */
     onboarded_at: Date | null;
 
+    /** The PRIVACY_POLICY_VERSION the user last accepted. */
+    privacy_policy_version: string | null;
+
+    privacy_policy_accepted_at: Date | null;
+
+    /** AI weekly check-ins are opt-in; nothing goes to the model provider while false. */
+    ai_checkins_enabled: boolean;
+
+    ai_checkins_consented_at: Date | null;
+
     deleted_at: Date;
 
     created_at: Date;
@@ -56,6 +66,22 @@ export const USERS_SCHEMA = {
         allowNull: true,
     },
     onboarded_at: {
+        type: "date",
+        allowNull: true,
+    },
+    privacy_policy_version: {
+        type: "string",
+        allowNull: true,
+    },
+    privacy_policy_accepted_at: {
+        type: "date",
+        allowNull: true,
+    },
+    ai_checkins_enabled: {
+        type: "boolean",
+        allowNull: false,
+    },
+    ai_checkins_consented_at: {
         type: "date",
         allowNull: true,
     },

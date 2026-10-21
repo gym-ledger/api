@@ -7,6 +7,7 @@ import {
 } from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import { USERS_TABLE, UsersInterface } from "../../../db/schemas/users/users.schema.js";
 import { AppError } from "../../../shared/errors/AppError.js";
+import { PRIVACY_POLICY_VERSION } from "../../../config/constants.js";
 import { resolveSupportedTimezone } from "../../../utils/timezone.js";
 import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { hashPassword, validateNewPassword, verifyPassword } from "../../../utils/authentication.js";
@@ -30,6 +31,7 @@ import {
 } from "../../../utils/users/users.weightGoal.utils.js";
 import { addDays, localDateString } from "../users.workout/users.workout.service.js";
 import { fetchWeightEntriesBetweenRepository } from "../users.checkins/users.checkins.repository.js";
+import { clearNotificationGroupRepository } from "../users.notifications/users.notifications.repository.js";
 import {
     CurrentBodyWeight,
     endWeightGoalRepository,
@@ -236,6 +238,83 @@ export const completeOnboardingService = async ({
 
 export const skipOnboardingService = async ({ userId }: { userId: string }) => {
     return toPublicUser(await markOnboarded(userId));
+}
+
+/**
+ * Records that the user accepted the privacy policy. `version` must be the
+ * one the app showed them, so a stale page can't accept a newer policy.
+ */
+export const acceptPrivacyPolicyService = async ({
+    userId,
+    data,
+}: {
+    userId: string;
+    data: { version?: unknown };
+}) => {
+    if (data?.version !== PRIVACY_POLICY_VERSION) {
+        throw new AppError("Please review the latest privacy policy and accept it again", 409);
+    }
+    await fetchUserOrThrow(userId);
+    const user = await updateOneInTable({
+        table: USERS_TABLE,
+        data: {
+            privacy_policy_version: PRIVACY_POLICY_VERSION,
+            privacy_policy_accepted_at: new Date(),
+            updated_at: new Date(),
+        },
+        where: [{ field: "id", operator: "=", value: userId }],
+    }) as UsersInterface;
+    return toPublicUser(user);
+}
+
+/**
+ * Turns AI weekly check-ins on or off. Turning them on needs the current
+ * privacy policy accepted (its AI section says exactly what is sent) and
+ * `consent: true` from the app's warning sheet.
+ */
+export const setAiCheckinsService = async ({
+    userId,
+    data,
+}: {
+    userId: string;
+    data: { enabled?: unknown; consent?: unknown };
+}) => {
+    if (typeof data?.enabled !== "boolean") {
+        throw new AppError("enabled must be true or false", 400);
+    }
+    const user = await fetchUserOrThrow(userId);
+    if (data.enabled) {
+        if (user.privacy_policy_version !== PRIVACY_POLICY_VERSION) {
+            throw new AppError("Accept the current privacy policy before turning on AI check-ins", 409);
+        }
+        if (data.consent !== true) {
+            throw new AppError("Turning on AI check-ins needs your consent", 400);
+        }
+    }
+    const updated = await updateOneInTable({
+        table: USERS_TABLE,
+        data: {
+            ai_checkins_enabled: data.enabled,
+            ai_checkins_consented_at: data.enabled ? new Date() : null,
+            updated_at: new Date(),
+        },
+        where: [{ field: "id", operator: "=", value: userId }],
+    }) as UsersInterface;
+    if (!data.enabled) {
+        // "Get weekly AI insights" / "No AI check-in this week" notices no longer apply.
+        await clearNotificationGroupRepository(userId, "weekly_checkin");
+    }
+    return toPublicUser(updated);
+}
+
+/** Read by the check-in service before anything is sent to the model. */
+export const isAiCheckinsEnabledService = async (userId: string) => {
+    const user = await fetchOneFromTable({
+        table: USERS_TABLE,
+        where: [{ field: "id", operator: "=", value: userId }],
+        select: ["ai_checkins_enabled"],
+    }) as Pick<UsersInterface, "ai_checkins_enabled"> | null;
+    return !!user?.ai_checkins_enabled;
 }
 
 /**
