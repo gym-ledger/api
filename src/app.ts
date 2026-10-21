@@ -8,6 +8,7 @@ import { API_PREFIX } from "./config/constants.js";
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { apiLimiter } from "./middleware/rateLimiters.js";
+import { checkHealth } from "./infrastructure/health.js";
 import router from "./modules/index/index.routes.js";
 
 // import adminRoutes from "./src/modules/admin/admin.routes";
@@ -33,8 +34,11 @@ app.use(express.json());
 
 app.use(httpLogger as any);
 
-app.get("/health", (_, res) => {
-    res.json({ ok: true });
+// 200 when Postgres and Redis both answer, 503 otherwise. Used by the
+// Docker health check and the deploy workflow's "is it live" step.
+app.get("/health", async (_, res) => {
+    const report = await checkHealth();
+    res.status(report.ok ? 200 : 503).json(report);
 });
 
 app.use(API_PREFIX, apiLimiter, router);
