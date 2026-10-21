@@ -10,6 +10,8 @@ declare global {
 
             adminUserId?: string;
             adminUser?: AdminUserInterface;
+            /** admin_sessions.id of the device making the request. */
+            adminSessionId?: string;
         }
     }
 }

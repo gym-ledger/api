@@ -7,9 +7,12 @@ export interface AdminUserInterface {
 
     password_hash: string;
 
-    refresh_token_hash: string;
+    // Superseded by admin_sessions (migration 036); always null now.
+    refresh_token_hash: string | null;
 
-    refresh_token_expires_at: Date;
+    refresh_token_expires_at: Date | null;
+
+    password_changed_at: Date | null;
 
     deleted_at: Date;
 
@@ -39,6 +42,10 @@ export const ADMIN_USER_SCHEMA = {
         allowNull: true,
     },
     refresh_token_expires_at: {
+        type: "date",
+        allowNull: true,
+    },
+    password_changed_at: {
         type: "date",
         allowNull: true,
     },
