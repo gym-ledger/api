@@ -28,6 +28,12 @@ export interface UsersInterface {
 
     ai_checkins_consented_at: Date | null;
 
+    /** When the user asked to delete their account (migration 041). */
+    deletion_requested_at: Date | null;
+
+    /** When the account and its data are deleted, unless the user cancels first. */
+    deletion_scheduled_for: Date | null;
+
     deleted_at: Date;
 
     created_at: Date;
@@ -82,6 +88,14 @@ export const USERS_SCHEMA = {
         allowNull: false,
     },
     ai_checkins_consented_at: {
+        type: "date",
+        allowNull: true,
+    },
+    deletion_requested_at: {
+        type: "date",
+        allowNull: true,
+    },
+    deletion_scheduled_for: {
         type: "date",
         allowNull: true,
     },

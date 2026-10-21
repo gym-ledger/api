@@ -210,7 +210,9 @@ const deliverOtp = async ({ method, phoneNumber, email, otp, purpose, swallowFai
         logger.info({ purpose, method, otp }, "OTP issued (development only)");
     }
 
-    const template: OtpTemplate = purpose === "reset_password" ? "otp-reset-password" : "otp-login";
+    const template: OtpTemplate = purpose === "reset_password"
+        ? "otp-reset-password"
+        : purpose === "delete_account" ? "otp-delete-account" : "otp-login";
     try {
         if (method === "phone") {
             await sendOtpWhatsApp({ phoneNumber, otp });
@@ -421,6 +423,28 @@ export const resetPasswordService = async (data: any) => {
         where: [{ field: "user_id", operator: "=", value: userObj.id }],
         useSoftDelete: false,
     });
+}
+
+/**
+ * Where a signed-in user's confirmation codes go: their email, or their
+ * phone (WhatsApp) when they have no email.
+ */
+const identityOf = (user: Pick<UsersInterface, "email" | "phone_country_code" | "phone_number">) => user.email
+    ? { method: "email", email: user.email, phoneNumber: undefined }
+    : { method: "phone", email: undefined, phoneNumber: { code: user.phone_country_code, number: user.phone_number } };
+
+/** Sends a code that confirms deleting the account, for users without a password. */
+export const sendAccountDeletionCodeService = async (user: UsersInterface) => {
+    await issueOtp({ ...identityOf(user), purpose: "delete_account" });
+    return { sent_to: user.email ? "email" : "phone" };
+}
+
+/** Throws unless `otp` is the current account-deletion code; the code is used up either way it succeeds. */
+export const verifyAccountDeletionCodeService = async (user: UsersInterface, otp: string) => {
+    const { method, email, phoneNumber } = identityOf(user);
+    const otpObj = await getOtpObj(method, phoneNumber, email, "delete_account");
+    await assertOtpValid(otpObj, otp, { allowMasterOtp: false });
+    await deleteOtpObj(otpObj!);
 }
 
 export const refreshTokensService = async (refreshToken: string | undefined) => {

@@ -2,10 +2,11 @@
 export const API_PREFIX = "/api/v1";
 
 /**
- * Version (date) of the privacy policy the web app shows at /privacy. Bump it
- * together with the policy text there; every user is asked to accept again.
+ * Version of the terms of use (/terms) and privacy policy (/privacy) the web
+ * app shows; users accept both together. Bump it together with either page's
+ * text there; every user is asked to accept again.
  */
-export const PRIVACY_POLICY_VERSION = "2026-10-21";
+export const PRIVACY_POLICY_VERSION = "2026-10-21.2";
 
 /**
  * How long a refresh token that was just swapped for a new one still works

@@ -19,5 +19,8 @@ export const toPublicUser = (user: UsersInterface) => ({
     privacy_policy_accepted: user.privacy_policy_version === PRIVACY_POLICY_VERSION,
     current_privacy_policy_version: PRIVACY_POLICY_VERSION,
     ai_checkins_enabled: !!user.ai_checkins_enabled,
+    // Set = the account is deleted on this date; the web app then asks
+    // whether to cancel that or sign out again.
+    deletion_scheduled_for: user.deletion_scheduled_for ?? null,
     created_at: user.created_at,
 });

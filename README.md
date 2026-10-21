@@ -8,6 +8,7 @@ The REST API behind Gym Ledger, a self-hostable workout logger. Both front-ends 
 - **Workouts.** Plans and their versions, users' own editable copies, workout sessions, sets with warm-ups and drop sets, a batch endpoint for sets logged offline, personal records, weekly volume and per-muscle training signals.
 - **Body weight.** Entries, moving averages, CSV import, and weight goals kept as history.
 - **Weekly check-ins.** Each finished week's numbers, plus an optional AI note from [Groq](https://console.groq.com) for users who opt in. Exactly what is sent is fixed in code and listed in the web app's privacy policy.
+- **Your data.** Data exports built in the background (a JSON file of everything stored about the user, downloadable for 7 days, with a notification when ready) and account deletion: every session ends at once, and 30 days later everything about the user is deleted, after their training is folded into anonymous monthly per-exercise totals (`analytics_exercise_monthly`).
 - **Admin.** CRUD for exercises (with images on S3-compatible storage), muscles, plans and progression rules, CSV import/export, user and AI-usage analytics, and an audit log of every admin change.
 
 ## Security
@@ -57,7 +58,7 @@ The first build takes a few minutes. When the logs settle, open:
 |---|---|---|
 | User app | http://localhost:3000 | Any email. The 6-digit code is printed in the API log (see below) |
 | Admin panel | http://localhost:3001 | `admin@example.com` / `local-admin-password` |
-| API | http://localhost:4000/api/v1 | `GET /health` returns `{ "ok": true }` |
+| API | http://localhost:4000/api/v1 | `GET /health` returns 200 with `"ok": true` when Postgres and Redis both answer, 503 otherwise |
 
 **Getting your login code.** No email provider is set up locally, so the API prints each code instead:
 

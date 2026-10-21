@@ -1,6 +1,6 @@
 export const OTP_AUTH_TABLE = "otp_auth";
 
-export type OtpPurpose = "login" | "reset_password";
+export type OtpPurpose = "login" | "reset_password" | "delete_account";
 
 export interface OtpAuthInterface {
     id: string;
