@@ -1,6 +1,7 @@
 import app from "./app.js";
 
 import { env } from "./config/env.js";
+import { logger } from "./config/logger.js";
 import { connectPostgres } from "./infrastructure/postgres/index.js";
 import { connectRedis } from "./infrastructure/redis/index.js";
 
@@ -10,14 +11,17 @@ async function bootstrap() {
         await connectRedis();
 
         const server = app.listen(env.PORT, () => {
-            console.log(`Server running on ${env.PORT}`);
+            // console.log(`Server running on ${env.PORT}`);
+            logger.info(`Server running on ${env.PORT}`);
         });
 
         process.on("SIGTERM", async () => {
-            console.log("SIGTERM received");
+            // console.log("SIGTERM received");
+            logger.info("SIGTERM received");
 
             server.close(async () => {
-                console.log("HTTP server closed");
+                // console.log("HTTP server closed");
+                logger.info("HTTP server closed");
 
                 process.exit(0);
             });

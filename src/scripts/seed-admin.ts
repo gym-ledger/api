@@ -1,5 +1,6 @@
 import "dotenv/config";
 import argon2 from "argon2";
+import { logger } from "../config/logger.js";
 import { pg } from "../infrastructure/postgres/index.js";
 
 const PLACEHOLDER = "generated-by-openssl-rand-hex-32";
@@ -57,7 +58,8 @@ async function seedAdmin() {
     );
 
     if (existing.rows.length > 0) {
-        console.log(`Admin already exists (${email}) — skipping`);
+        // console.log(`Admin already exists (${email}) — skipping`);
+        logger.info(`Admin already exists (${email}) — skipping`);
         process.exit(0);
     }
 
@@ -68,7 +70,8 @@ async function seedAdmin() {
         [email, passwordHash]
     );
 
-    console.log(`Admin created: ${email}`);
+    // console.log(`Admin created: ${email}`);
+    logger.info(`Admin created: ${email}`);
     process.exit(0);
 }
 

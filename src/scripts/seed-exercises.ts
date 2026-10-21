@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
+import { logger } from "../config/logger.js";
 import { pg } from "../infrastructure/postgres/index.js";
 import { EXERCISE_SEED_FILE, ExerciseSeedFile } from "./exercise-seed-file.js";
 
@@ -79,7 +80,11 @@ async function seedExercises() {
         client.release();
     }
 
-    console.log(
+    // console.log(
+    //     `Seeded ${exercisesAdded} of ${file.exercises.length} exercises and ${musclesAdded} of ${file.muscles.length} muscles ` +
+    //     `(the rest already existed)`
+    // );
+    logger.info(
         `Seeded ${exercisesAdded} of ${file.exercises.length} exercises and ${musclesAdded} of ${file.muscles.length} muscles ` +
         `(the rest already existed)`
     );

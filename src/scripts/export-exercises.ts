@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { writeFile } from "node:fs/promises";
+import { logger } from "../config/logger.js";
 import { pg } from "../infrastructure/postgres/index.js";
 import { EXERCISE_SEED_FILE, ExerciseSeedFile } from "./exercise-seed-file.js";
 
@@ -48,7 +49,8 @@ async function exportExercises() {
         exercises: exercises.rows,
     };
     await writeFile(EXERCISE_SEED_FILE, `${JSON.stringify(file, null, 2)}\n`, "utf8");
-    console.log(`Exported ${file.exercises.length} exercises and ${file.muscles.length} muscles to seeds/exercises.json`);
+    // console.log(`Exported ${file.exercises.length} exercises and ${file.muscles.length} muscles to seeds/exercises.json`);
+    logger.info(`Exported ${file.exercises.length} exercises and ${file.muscles.length} muscles to seeds/exercises.json`);
     process.exit(0);
 }
 

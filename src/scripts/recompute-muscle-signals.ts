@@ -10,6 +10,7 @@
  *   npm run recompute:muscle-signals -- <userId> # one user
  */
 import "dotenv/config";
+import { logger } from "../config/logger.js";
 import { pg } from "../infrastructure/postgres/index.js";
 import { recordMuscleStimulusForLoggedSets } from "../modules/users/users.muscleSignals/users.muscleSignals.service.js";
 
@@ -73,7 +74,8 @@ async function recomputeMuscleSignals(userId?: string) {
         (a, b) => a.mainSet.created_at.getTime() - b.mainSet.created_at.getTime(),
     );
 
-    console.log(`Replaying ${units.length} logged sets (+ drop sets)...`);
+    // console.log(`Replaying ${units.length} logged sets (+ drop sets)...`);
+    logger.info(`Replaying ${units.length} logged sets (+ drop sets)...`);
 
     for (const { mainSet, drops } of units) {
         await recordMuscleStimulusForLoggedSets({
@@ -84,7 +86,8 @@ async function recomputeMuscleSignals(userId?: string) {
         });
     }
 
-    console.log("Muscle signals recomputed.");
+    // console.log("Muscle signals recomputed.");
+    logger.info("Muscle signals recomputed.");
 }
 
 const userIdArg = process.argv[2];

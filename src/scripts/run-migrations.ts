@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { logger } from "../config/logger.js";
 import { pg } from "../infrastructure/postgres/index.js";
 
 const migrationsDir = path.join(
@@ -53,11 +54,13 @@ async function runMigrations() {
 
     for (const file of files) {
       if (executedMigrations.has(file)) {
-        console.log(`Skipping ${file}`);
+        // console.log(`Skipping ${file}`);
+        logger.info(`Skipping ${file}`);
         continue;
       }
 
-      console.log(`Running ${file}`);
+      // console.log(`Running ${file}`);
+      logger.info(`Running ${file}`);
 
       const sql = fs.readFileSync(
         path.join(migrationsDir, file),
@@ -79,7 +82,8 @@ async function runMigrations() {
 
         await client.query("COMMIT");
 
-        console.log(`Completed ${file}`);
+        // console.log(`Completed ${file}`);
+        logger.info(`Completed ${file}`);
       } catch (err) {
         await client.query("ROLLBACK");
 
@@ -91,7 +95,8 @@ async function runMigrations() {
       }
     }
 
-    console.log("All migrations complete");
+    // console.log("All migrations complete");
+    logger.info("All migrations complete");
   } finally {
     await client.query("SELECT pg_advisory_unlock($1)", [MIGRATION_LOCK_KEY]).catch(() => undefined);
     client.release();
