@@ -29,6 +29,28 @@ export const allowedTables = [
     "user_weekly_checkins",
     "user_notifications",
 ];
+// Values always go to Postgres as $n parameters. Identifiers (columns, sort
+// keys, insert/update keys) can't be parameters, so they are interpolated —
+// every one is checked against this pattern first. A key that ever slips
+// through from a request body then fails loudly instead of becoming SQL.
+const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?$/i;
+
+const assertIdentifier = (name: string, kind: string) => {
+    if (!IDENTIFIER_PATTERN.test(name)) {
+        throw new Error(`Invalid ${kind}: ${name}`);
+    }
+    return name;
+};
+
+/** LIMIT/OFFSET are interpolated in fetchManyFromTable, so only whole numbers ≥ 0 pass. */
+const toSafeCount = (value: unknown, kind: string) => {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        throw new Error(`Invalid ${kind}: ${String(value)}`);
+    }
+    return parsed;
+};
+
 export type IFilter = Record<
     string,
     | unknown
@@ -105,6 +127,12 @@ export const buildWhereClause = (
     let sortBy = initialSortBy;
 
     for (const condition of where) {
+
+        // RAW and FTS carry no field; RAW's SQL is written in code, never
+        // built from request input.
+        if (condition.operator !== "RAW" && condition.operator !== "FTS") {
+            assertIdentifier(condition.field ?? "", "field");
+        }
 
         switch (condition.operator) {
 
@@ -238,10 +266,13 @@ export const buildOrderByClause = (
     return `
         ORDER BY
         ${entries
-            .map(
-                ([field, dir]) =>
-                    `${field} ${dir.toUpperCase()}`
-            )
+            .map(([field, dir]) => {
+                assertIdentifier(field, "sort field");
+                if (dir !== "asc" && dir !== "desc") {
+                    throw new Error(`Invalid sort direction: ${String(dir)}`);
+                }
+                return `${field} ${dir.toUpperCase()}`;
+            })
             .join(", ")}
     `;
 };
@@ -250,6 +281,10 @@ export const buildSelectClause = (
     select?: string[],
     extraSelects: string[] = []
 ) => {
+
+    // extraSelects are expressions written in code (e.g. ts_rank), so only
+    // the plain column list is checked.
+    select?.forEach((column) => assertIdentifier(column, "select column"));
 
     return `
         SELECT
@@ -394,10 +429,10 @@ export const fetchManyFromTable = async ({
         throw new Error(`Invalid table: ${table}`);
     }
 
-    offset = parseInt(offset.toString());
+    offset = toSafeCount(offset, "offset");
 
     if (limit) {
-        limit = parseInt(limit.toString());
+        limit = toSafeCount(limit, "limit");
     }
 
     let {
@@ -694,7 +729,7 @@ export const addOneInTable = async ({
         throw new Error(`Invalid table: ${table}`);
     }
 
-    const keys = Object.keys(data);
+    const keys = Object.keys(data).map((key) => assertIdentifier(key, "column"));
 
     if (keys.length === 0) {
         throw new Error(
@@ -790,7 +825,7 @@ export const updateOneInTable = async ({
     const setClause = Object.keys(data)
         .map(
             (key, index) =>
-                `${key} = $${values.length + index + 1}`
+                `${assertIdentifier(key, "column")} = $${values.length + index + 1}`
         )
         .join(", ");
 
@@ -916,7 +951,7 @@ export const addManyInTable = async ({
         return [];
     }
 
-    const keys = Object.keys(data[0]);
+    const keys = Object.keys(data[0]).map((key) => assertIdentifier(key, "column"));
 
     if (keys.length === 0) {
         throw new Error(
@@ -1099,7 +1134,7 @@ export const updateManyInTable = async ({
     const setClause = Object.keys(data)
         .map(
             (key, index) =>
-                `${key} = $${values.length + index + 1}`
+                `${assertIdentifier(key, "column")} = $${values.length + index + 1}`
         )
         .join(", ");
 
