@@ -1,3 +1,4 @@
+import { IMPORT_CONCURRENCY, mapWithConcurrency } from "../../../../utils/concurrency.js";
 import { AppError } from "../../../../shared/errors/AppError.js";
 import { addOneInTable, deleteManyInTable, deleteOneFromTable, fetchManyFromTable, fetchOneFromTable, fetchPaginatedResultsFromTable, updateOneInTable } from "../../../index/index.repository.js";
 import { ADMIN_USER_TABLE, AdminUserInterface } from "../../../../db/schemas/admin/admin.schema.js";
@@ -14,6 +15,7 @@ import { FetchPaginatedResultsFromTableParams } from "../../../index/index.repos
 import { EXERCISE_MUSCLES_TABLE, ExerciseMusclesInterface } from "../../../../db/schemas/muscles/exerciseMuscles.schema.js";
 import { fetchExerciseWithMusclesByIdRepository, fetchExercisesForExportRepository } from "./adminCrudExercises.repository.js";
 import { MUSCLES_TABLE, MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
+import { deleteStoredImage, storeExerciseImage } from "../../../../infrastructure/storage/index.js";
 
 const parseAndValidateExerciseMuscles = (exerciseMuscles: string): { muscle_id: string, contribution: number }[] => {
     let parsed: { muscle_id: string, contribution: number }[];
@@ -109,7 +111,7 @@ export const createExerciseForAdminService = async (data: {
     exerciseMuscles?: string,
     file?: Express.Multer.File
 }) => {
-    const { name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles } = data;
+    const { name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles, file } = data;
 
     const parsedExerciseMuscles = exerciseMuscles
         ? parseAndValidateExerciseMuscles(exerciseMuscles)
@@ -134,10 +136,22 @@ export const createExerciseForAdminService = async (data: {
         throw new AppError("Exercise with this slug already exists", 400);
     }
 
-    const exercise = await addOneInTable({
-        table: EXERCISES_TABLE,
-        data: { name, slug, description, added_by_admin_user_id, visibility, added_by_user_id: null },
-    }) as ExercisesInterface;
+    // Stored first, so a file that isn't a readable image fails before anything is created.
+    const image = file ? await storeExerciseImage(file.buffer) : null;
+    let exercise: ExercisesInterface;
+    try {
+        exercise = await addOneInTable({
+            table: EXERCISES_TABLE,
+            data: {
+                name, slug, description, added_by_admin_user_id, visibility, added_by_user_id: null,
+                image_url: image?.url ?? null,
+                image_key: image?.key ?? null,
+            },
+        }) as ExercisesInterface;
+    } catch (error) {
+        await deleteStoredImage(image?.key);
+        throw error;
+    }
 
     await Promise.all(parsedExerciseMuscles.map(async (exerciseMuscle) => {
         const muscle = await fetchOneFromTable({
@@ -166,9 +180,11 @@ export const updateExerciseForAdminService = async (data: {
     added_by_admin_user_id: string,
     visibility?: string,
     exerciseMuscles?: string,
-    file?: Express.Multer.File
+    file?: Express.Multer.File,
+    /** "true" removes the current image when no new one is uploaded. */
+    remove_image?: string,
 }) => {
-    const { id, name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles } = data;
+    const { id, name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles, file, remove_image } = data;
 
     if (!id) {
         throw new AppError("Exercise id is required", 400);
@@ -219,16 +235,31 @@ export const updateExerciseForAdminService = async (data: {
     if (visibility) {
         toUpdate.visibility = visibility;
     }
+    const newImage = file ? await storeExerciseImage(file.buffer) : null;
+    const replacesImage = !!newImage || remove_image === "true";
+    if (replacesImage) {
+        toUpdate.image_url = newImage?.url ?? null;
+        toUpdate.image_key = newImage?.key ?? null;
+    }
 
-    const updatedExercise = await updateOneInTable({
-        table: EXERCISES_TABLE,
-        data: toUpdate,
-        where: [{
-            field: "id",
-            operator: "=",
-            value: id,
-        }],
-    }) as ExercisesInterface;
+    let updatedExercise: ExercisesInterface;
+    try {
+        updatedExercise = await updateOneInTable({
+            table: EXERCISES_TABLE,
+            data: toUpdate,
+            where: [{
+                field: "id",
+                operator: "=",
+                value: id,
+            }],
+        }) as ExercisesInterface;
+    } catch (error) {
+        await deleteStoredImage(newImage?.key);
+        throw error;
+    }
+    if (replacesImage) {
+        await deleteStoredImage(exercise.image_key);
+    }
 
 
     // `exerciseMuscles` omitted entirely => leave existing muscle links untouched
@@ -391,7 +422,7 @@ export const importExercisesForAdminService = async (data: { file: Express.Multe
 
     const success: ExercisesInterface[] = [];
 
-    await Promise.all(rows.map(async (row, index) => {
+    await mapWithConcurrency(rows, IMPORT_CONCURRENCY, async (row, index) => {
         try {
             const exerciseMuscles = await resolveExerciseMusclesCsvCell(row.exerciseMuscles);
 
@@ -421,7 +452,7 @@ export const importExercisesForAdminService = async (data: { file: Express.Multe
                 message: error instanceof AppError ? error.message : "Unknown error",
             });
         }
-    }));
+    });
 
     return { errors, success };
 }

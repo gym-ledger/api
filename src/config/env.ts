@@ -110,6 +110,22 @@ const envSchema = z.object({
     // Signs ALTCHA challenges. Required in production (generate-secrets.sh
     // fills it in); in development one is derived from ACCESS_TOKEN_SECRET.
     CAPTCHA_SECRET: optionalString.pipe(z.string().min(32, "must be at least 32 characters").optional()),
+
+    // Exercise images, on any S3-compatible storage (AWS S3, Cloudflare R2,
+    // MinIO, Backblaze B2, ...). Unset S3_BUCKET = image uploads are off.
+    // S3_ENDPOINT is the provider's API URL (unset for AWS itself), e.g.
+    // https://<account id>.r2.cloudflarestorage.com for R2.
+    S3_ENDPOINT: optionalString.pipe(z.url().optional()),
+    // "auto" for R2; the bucket's region for AWS.
+    S3_REGION: optionalString.transform((v) => v ?? "auto"),
+    S3_BUCKET: optionalString,
+    S3_ACCESS_KEY_ID: optionalString,
+    S3_SECRET_ACCESS_KEY: optionalString,
+    // Public base URL the bucket's objects are served from (an R2 custom
+    // domain or r2.dev URL, a CDN, or the bucket's own URL).
+    S3_PUBLIC_URL: optionalString.pipe(z.url().optional()).transform((v) => v?.replace(/\/+$/, "")),
+    // MinIO and some others need path-style URLs (endpoint/bucket/key).
+    S3_FORCE_PATH_STYLE: booleanFlag(false),
 }).superRefine((env, ctx) => {
     const requireKey = (key: keyof typeof env, why: string) => {
         if (!env[key]) {
@@ -157,6 +173,12 @@ const envSchema = z.object({
     }
     if (env.TWILIO_WHATSAPP_CONTENT_SID && !/^HX[0-9a-fA-F]{32}$/.test(env.TWILIO_WHATSAPP_CONTENT_SID)) {
         ctx.addIssue({ code: "custom", path: ["TWILIO_WHATSAPP_CONTENT_SID"], message: "must look like HX followed by 32 hex characters" });
+    }
+
+    if (env.S3_BUCKET) {
+        requireKey("S3_ACCESS_KEY_ID", "when S3_BUCKET is set");
+        requireKey("S3_SECRET_ACCESS_KEY", "when S3_BUCKET is set");
+        requireKey("S3_PUBLIC_URL", "when S3_BUCKET is set");
     }
 
     if (env.COOKIE_SAMESITE === "none" && env.COOKIE_SECURE === false) {

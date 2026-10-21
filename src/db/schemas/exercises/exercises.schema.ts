@@ -33,7 +33,10 @@ export interface ExercisesInterface {
 
     slug: string;
 
-    image_url: string;
+    image_url: string | null;
+
+    /** Object key of the image in S3 storage (migration 039). */
+    image_key: string | null;
 
     description: string;
 
