@@ -13,14 +13,14 @@ else
     sedi() { sed -i "$@"; }
 fi
 
-# ── Copy .env.production → .env if .env doesn't exist ────────────────────────
+# ── Copy .env.production.example → .env if .env doesn't exist ────────────────────────
 if [[ ! -f .env ]]; then
-    if [[ ! -f .env.production ]]; then
-        echo "Error: .env.production not found in $SCRIPT_DIR" >&2
+    if [[ ! -f .env.production.example ]]; then
+        echo "Error: .env.production.example not found in $SCRIPT_DIR" >&2
         exit 1
     fi
-    echo "==> .env not found — copying from .env.production"
-    cp .env.production .env
+    echo "==> .env not found — copying from .env.production.example"
+    cp .env.production.example .env
 fi
 
 # ── Replace a key's placeholder value with a generated secret ─────────────────

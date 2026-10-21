@@ -7,9 +7,9 @@ build
 .env.development.local
 .env.test.local
 .env.production.local
-# .env.development
+.env.development
 .env.test
-# .env.production
+.env.production
 # .env.local
 run.local.sh
 

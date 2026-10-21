@@ -55,7 +55,7 @@ This will:
 
 On first start the container entrypoint automatically runs database migrations and seeds the default admin user (`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` from `.env`). Both steps are idempotent and are skipped on subsequent restarts if already applied. In production the seed refuses to run (and the container stops) unless `DEFAULT_ADMIN_EMAIL` is your own address and `DEFAULT_ADMIN_PASSWORD` is at least 12 characters; `generate-secrets.sh` generates the password.
 
-The API also refuses to start in production without `RESEND_API_KEY`, `EMAIL_FROM` and `CORS_ORIGINS` (the user app and admin panel origins). See the comments in `.env.production` for these and the optional WhatsApp phone-OTP settings (`PHONE_OTP_ENABLED`, `TWILIO_*`).
+The API also refuses to start in production without `RESEND_API_KEY`, `EMAIL_FROM` and `CORS_ORIGINS` (the user app and admin panel origins). See the comments in `.env.production.example` for these and the optional WhatsApp phone-OTP settings (`PHONE_OTP_ENABLED`, `TWILIO_*`).
 
 ---
 

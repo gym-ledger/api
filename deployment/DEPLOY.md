@@ -31,7 +31,7 @@ cd workout-gym-api
 **2. Create `.env` from the production template**
 
 ```bash
-cp .env.production .env
+cp .env.production.example .env
 ```
 
 **3. Follow the mode-specific guide** to fill in secrets and deploy:
