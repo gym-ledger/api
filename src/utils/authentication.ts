@@ -66,6 +66,22 @@ export const verifyPassword = async (password: string, passwordHash: string) => 
     return await argon2.verify(passwordHash, password);
 }
 
+let dummyHash: Promise<string> | undefined;
+
+/**
+ * Like verifyPassword, but when there is no hash (no such account, or no
+ * password set) it still runs a full argon2 check against a throwaway hash
+ * and returns false, so the response time doesn't reveal which accounts exist.
+ */
+export const verifyPasswordConstantTime = async (password: string, passwordHash: string | null | undefined) => {
+    if (passwordHash) {
+        return await argon2.verify(passwordHash, password);
+    }
+    dummyHash ??= argon2.hash(crypto.randomBytes(32).toString("hex"));
+    await argon2.verify(await dummyHash, password);
+    return false;
+}
+
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 128;
 

@@ -59,7 +59,7 @@ export const updateUserName = async (req: Request, res: Response, next: NextFunc
 
 export const changeUserPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await changeUserPasswordService({ userId: req.userId as string, data: req.body });
+        await changeUserPasswordService({ userId: req.userId as string, sessionId: req.userSessionId as string, data: req.body });
         responseSend(res, 200, "Password updated successfully", null);
     } catch (error) {
         next(error);

@@ -6,8 +6,8 @@ import { sendOtpWhatsApp } from "../../utils/whatsapp-utils.js";
 import { isEmailDeliveryConfigured, OtpTemplate, sendOtpEmail } from "../../utils/email-utils.js";
 import { OtpDeliveryError } from "../../shared/errors/OtpDeliveryError.js";
 import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schema.js";
-import { generateRefreshToken, generateUserAccessToken, hashPassword, validateNewPassword, verifyPassword } from "../../utils/authentication.js";
-import { hashToken } from "../../utils/crypto.js";
+import { generateRefreshToken, generateUserAccessToken, hashPassword, validateNewPassword, verifyPasswordConstantTime } from "../../utils/authentication.js";
+import { decryptGraceToken, encryptGraceToken, hashToken } from "../../utils/crypto.js";
 import { toPublicUser } from "../../utils/users/users.utils.js";
 import { captcha } from "../../infrastructure/captcha/index.js";
 import { env } from "../../config/env.js";
@@ -15,6 +15,8 @@ import { USER_SESSIONS_TABLE } from "../../db/schemas/auth/user_sessions.schema.
 import { UserSessionsInterface } from "../../db/schemas/auth/user_sessions.schema.js";
 import { logger } from "../../config/logger.js";
 import { claimOtpAttemptRepository } from "./auth.repository.js";
+import { deleteUserSessionRepository, fetchUserSessionByHashRepository, rotateUserSessionRepository } from "./userSessions.repository.js";
+import { REFRESH_REUSE_GRACE_MS } from "../../config/constants.js";
 
 const OTP_TTL_MS = 1000 * 60 * 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -320,8 +322,9 @@ export const loginWithPasswordService = async (data: any) => {
     }
     const userObj = await findUserByIdentity(method, phoneNumber, email);
     // Same error for "no such user", "no password set" and "wrong password"
-    // so this endpoint can't be used to probe which accounts exist.
-    if (!userObj?.password_hash || !await verifyPassword(password, userObj.password_hash)) {
+    // so this endpoint can't be used to probe which accounts exist; the
+    // password check always runs so the timing doesn't give it away either.
+    if (!await verifyPasswordConstantTime(password, userObj?.password_hash) || !userObj) {
         throw new AppError("Invalid credentials", 401);
     }
     return await createUserSession(userObj);
@@ -425,59 +428,62 @@ export const refreshTokensService = async (refreshToken: string | undefined) => 
     if (!refreshToken) {
         throw new AppError("Refresh token is required", 401);
     }
-    const sessionObj = await fetchOneFromTable({
-        table: USER_SESSIONS_TABLE,
-        where: [
-            {
-                field: "refresh_token_hash",
-                operator: "=",
-                value: hashToken(refreshToken),
-            },
-        ],
-        useSoftDelete: false,
-    }) as UserSessionsInterface;
-    if (!sessionObj) {
+    const oldHash = hashToken(refreshToken);
+    const sessionObj = await fetchUserSessionByHashRepository("refresh_token_hash", oldHash);
+    if (sessionObj) {
+        if (sessionObj.expires_at < new Date()) {
+            throw new AppError("Refresh token expired", 401);
+        }
+        if (sessionObj.revoked_at) {
+            await deleteUserSessionRepository(sessionObj.id);
+            throw new AppError("Refresh token revoked", 401);
+        }
+        const newRefreshToken = generateRefreshToken();
+        const refreshTokenExpiresAt = new Date(Date.now() + SESSION_TTL_MS);
+        const rotated = await rotateUserSessionRepository({
+            sessionId: sessionObj.id,
+            oldHash,
+            newHash: hashToken(newRefreshToken),
+            newTokenEnc: encryptGraceToken(newRefreshToken),
+            expiresAt: refreshTokenExpiresAt,
+        });
+        if (rotated) {
+            const { accessToken, accessTokenExpiresAt } = await generateUserAccessToken({
+                userId: sessionObj.user_id,
+                sessionId: sessionObj.id,
+            });
+            return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken, refreshTokenExpiresAt };
+        }
+        // Another refresh with this same token won the race; it is now the
+        // previous token, so the grace path below hands back the winner's.
+    }
+    return await refreshWithPreviousToken(oldHash);
+}
+
+/**
+ * A refresh token that was already swapped for a new one. Within the grace
+ * window this returns that same new token (a retry after a dropped response,
+ * or two tabs refreshing at once). After it, the old token showing up again
+ * means it was likely copied, so the session is ended.
+ */
+const refreshWithPreviousToken = async (oldHash: string) => {
+    const sessionObj = await fetchUserSessionByHashRepository("previous_refresh_token_hash", oldHash);
+    if (!sessionObj || sessionObj.revoked_at || sessionObj.expires_at < new Date()) {
         throw new AppError("Invalid refresh token", 401);
     }
-    if (sessionObj.expires_at < new Date()) {
-        throw new AppError("Refresh token expired", 401);
+    const withinGrace = !!sessionObj.rotated_at
+        && Date.now() - new Date(sessionObj.rotated_at).getTime() <= REFRESH_REUSE_GRACE_MS;
+    const currentToken = withinGrace ? decryptGraceToken(sessionObj.rotated_token_enc) : null;
+    if (!currentToken) {
+        logger.warn({ sessionId: sessionObj.id, userId: sessionObj.user_id }, "Replaced refresh token reused, session ended");
+        await deleteUserSessionRepository(sessionObj.id);
+        throw new AppError("Invalid refresh token", 401);
     }
-    if (sessionObj.revoked_at) {
-        await deleteOneFromTable({
-            table: USER_SESSIONS_TABLE,
-            where: [
-                {
-                    field: "id",
-                    operator: "=",
-                    value: sessionObj.id,
-                },
-            ],
-            useSoftDelete: false,
-        });
-        throw new AppError("Refresh token revoked", 401);
-    }
-    const newRefreshToken = generateRefreshToken();
-    const refreshTokenHash = hashToken(newRefreshToken);
     const { accessToken, accessTokenExpiresAt } = await generateUserAccessToken({
         userId: sessionObj.user_id,
-        sessionId: refreshTokenHash,
+        sessionId: sessionObj.id,
     });
-    const refreshTokenExpiresAt = new Date(Date.now() + SESSION_TTL_MS);
-    await updateOneInTable({
-        table: USER_SESSIONS_TABLE,
-        data: {
-            refresh_token_hash: refreshTokenHash,
-            expires_at: refreshTokenExpiresAt,
-            last_used_at: new Date(),
-        },
-        where: [{
-            field: "id",
-            operator: "=",
-            value: sessionObj.id,
-        }],
-        useSoftDelete: false,
-    });
-    return { accessToken, accessTokenExpiresAt, refreshToken: newRefreshToken, refreshTokenExpiresAt };
+    return { accessToken, accessTokenExpiresAt, refreshToken: currentToken, refreshTokenExpiresAt: new Date(sessionObj.expires_at) };
 }
 
 /**

@@ -10,7 +10,8 @@ export type AdminSessionEndReason =
     | "signed_out_remotely"
     | "signed_out_others"
     | "password_changed"
-    | "session_limit";
+    | "session_limit"
+    | "token_reused";
 
 export interface AdminSessionRow {
     id: string;
@@ -18,6 +19,8 @@ export interface AdminSessionRow {
     expires_at: Date;
     revoked_at: Date | null;
     revoked_reason: AdminSessionEndReason | null;
+    rotated_token_enc: string | null;
+    rotated_at: Date | null;
 }
 
 /** A session as the My Devices list shows it. */
@@ -101,27 +104,36 @@ export const createAdminSessionRepository = async (data: {
     }
 }
 
-/** The session a refresh token belongs to (ended or expired ones too), if its admin still exists. */
-export const fetchAdminSessionByRefreshHashRepository = async (refreshTokenHash: string): Promise<AdminSessionRow | null> => {
+const fetchAdminSessionByHash = async (column: "refresh_token_hash" | "previous_refresh_token_hash", hash: string): Promise<AdminSessionRow | null> => {
     const result = await pg.query(`
-    SELECT s.id, s.admin_user_id, s.expires_at, s.revoked_at, s.revoked_reason
+    SELECT s.id, s.admin_user_id, s.expires_at, s.revoked_at, s.revoked_reason, s.rotated_token_enc, s.rotated_at
     FROM admin_sessions s
     INNER JOIN admin_users a ON a.id = s.admin_user_id AND a.deleted_at IS NULL
-    WHERE s.refresh_token_hash = $1
-    `, [refreshTokenHash]);
+    WHERE s.${column} = $1
+    `, [hash]);
     return result.rows[0] ?? null;
 }
 
+/** The session a refresh token belongs to (ended or expired ones too), if its admin still exists. */
+export const fetchAdminSessionByRefreshHashRepository = (refreshTokenHash: string) =>
+    fetchAdminSessionByHash("refresh_token_hash", refreshTokenHash);
+
+/** The session whose refresh token this one was just swapped for (migration 038). */
+export const fetchAdminSessionByPreviousHashRepository = (refreshTokenHash: string) =>
+    fetchAdminSessionByHash("previous_refresh_token_hash", refreshTokenHash);
+
 /**
  * Swaps the session's refresh token for a new one and records the device
- * that used it. Matches on the old hash too, so of two refreshes racing with
- * the same token only one wins. `false` when this one lost or the session
- * has ended.
+ * that used it, keeping the old hash and the new token (encrypted) for the
+ * reuse grace window. Matches on the old hash too, so of two refreshes
+ * racing with the same token only one wins. `false` when this one lost or
+ * the session has ended.
  */
 export const rotateAdminSessionRepository = async (data: {
     sessionId: string,
     oldHash: string,
     newHash: string,
+    newTokenEnc: string,
     expiresAt: Date,
     device: RequestDevice,
 }): Promise<boolean> => {
@@ -137,11 +149,14 @@ export const rotateAdminSessionRepository = async (data: {
         device_type = CASE WHEN $9::varchar = 'unknown' THEN device_type ELSE $9::varchar END,
         city = $10,
         region = $11,
-        country = $12
+        country = $12,
+        previous_refresh_token_hash = $2,
+        rotated_token_enc = $13,
+        rotated_at = NOW()
     WHERE id = $1
         AND refresh_token_hash = $2
         AND ${active()}
-    `, [data.sessionId, data.oldHash, data.newHash, data.expiresAt, ...deviceValues(data.device)]);
+    `, [data.sessionId, data.oldHash, data.newHash, data.expiresAt, ...deviceValues(data.device), data.newTokenEnc]);
     return (result.rowCount ?? 0) > 0;
 }
 

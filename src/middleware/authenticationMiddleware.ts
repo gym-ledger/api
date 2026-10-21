@@ -1,8 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { env } from "../config/env.js";
 import { errors as joseErrors, jwtVerify } from "jose";
-import { fetchOneFromTable } from "../modules/index/index.repository.js";
-import { USERS_TABLE, UsersInterface } from "../db/schemas/users/users.schema.js";
+import { UsersInterface } from "../db/schemas/users/users.schema.js";
+import { fetchUserForActiveSessionRepository } from "../modules/auth/userSessions.repository.js";
 import { isValidUUID } from "../utils/validation.js";
 import { AdminUserInterface } from "../db/schemas/admin/admin.schema.js";
 import { fetchAdminForActiveSessionRepository } from "../modules/admin/admin.auth/adminSessions.repository.js";
@@ -17,28 +17,21 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
         if (!decoded.payload) {
             return res.status(401).json({ message: "Unauthorized" });
         }
-        const user = await fetchOneFromTable({
-            table: USERS_TABLE,
-            filter: {
-                id: decoded.payload.sub,
-            },
-            select: [
-                "id",
-                "phone_country_code",
-                "phone_number",
-                "email",
-                "first_name",
-                "last_name",
-                "created_at",
-                "updated_at",
-                "deleted_at",
-            ]
-        }) as UsersInterface;
+        // The token is only good while the session (device) it was issued for
+        // is active, so logging out or a password change takes effect
+        // immediately. Tokens from before migration 038 carry a hash instead
+        // of a session id and get a 401, which makes the client refresh.
+        const { sub, sessionId } = decoded.payload;
+        if (typeof sub !== "string" || typeof sessionId !== "string" || !isValidUUID(sub) || !isValidUUID(sessionId)) {
+            return res.status(401).json({ message: "Unauthorized" });
+        }
+        const user = await fetchUserForActiveSessionRepository(sub, sessionId) as UsersInterface | null;
         if (!user) {
             return res.status(401).json({ message: "Unauthorized" });
         }
         req.user = user;
         req.userId = user.id;
+        req.userSessionId = sessionId;
         next();
     } catch (error) {
         // Expired / malformed / badly-signed tokens are a 401, not a server error —

@@ -7,6 +7,8 @@ declare global {
         interface Request {
             userId?: string;
             user?: UsersInterface;
+            /** user_sessions.id of the device making the request. */
+            userSessionId?: string;
 
             adminUserId?: string;
             adminUser?: AdminUserInterface;

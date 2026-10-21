@@ -12,6 +12,7 @@ import { resolveSupportedTimezone } from "../../../utils/timezone.js";
 import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { hashPassword, validateNewPassword, verifyPassword } from "../../../utils/authentication.js";
 import { toPublicUser } from "../../../utils/users/users.utils.js";
+import { deleteOtherUserSessionsRepository } from "../../auth/userSessions.repository.js";
 import {
     assessWeightPace,
     GoalPace,
@@ -365,11 +366,14 @@ export const updateUserNameService = async ({
  * `currentPassword` must match it; users who have only ever logged in via
  * OTP have no password yet and can set one directly.
  */
+/** Sets a new password and signs the user out on every other device. */
 export const changeUserPasswordService = async ({
     userId,
+    sessionId,
     data,
 }: {
     userId: string;
+    sessionId: string;
     data: { currentPassword?: unknown; newPassword?: unknown };
 }) => {
     const { currentPassword, newPassword } = data ?? {};
@@ -394,6 +398,7 @@ export const changeUserPasswordService = async ({
         },
         where: [{ field: "id", operator: "=", value: userId }],
     });
+    await deleteOtherUserSessionsRepository(userId, sessionId);
 }
 
 
