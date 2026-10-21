@@ -8,11 +8,13 @@ import {
     markNotificationRead,
 } from "./users.notifications.controller.js";
 
+import { noInput, uuidParams, validate } from "../../../middleware/validate.js";
+
 const usersNotificationsRouter = Router();
 
-usersNotificationsRouter.get("/", verifyUserToken, asyncHandler(listNotifications));
-usersNotificationsRouter.get("/unread-count", verifyUserToken, asyncHandler(getUnreadNotificationCount));
-usersNotificationsRouter.post("/read-all", verifyUserToken, asyncHandler(markAllNotificationsRead));
-usersNotificationsRouter.post("/:notificationId/read", verifyUserToken, asyncHandler(markNotificationRead));
+usersNotificationsRouter.get("/", verifyUserToken, validate({ query: noInput, body: noInput }), asyncHandler(listNotifications));
+usersNotificationsRouter.get("/unread-count", verifyUserToken, validate({ query: noInput, body: noInput }), asyncHandler(getUnreadNotificationCount));
+usersNotificationsRouter.post("/read-all", verifyUserToken, validate({ query: noInput, body: noInput }), asyncHandler(markAllNotificationsRead));
+usersNotificationsRouter.post("/:notificationId/read", verifyUserToken, validate({ params: uuidParams("notificationId"), query: noInput, body: noInput }), asyncHandler(markNotificationRead));
 
 export default usersNotificationsRouter;

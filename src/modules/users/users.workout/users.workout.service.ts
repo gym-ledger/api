@@ -1,3 +1,4 @@
+import { batchSetItem } from "./users.workout.schemas.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../utils/validation.js";
 import { resolveSupportedTimezone } from "../../../utils/timezone.js";
@@ -408,14 +409,47 @@ const getExerciseOrThrow = async (exerciseId: unknown) => {
     if (typeof exerciseId !== "string" || !isValidUUID(exerciseId)) {
         throw new AppError("Invalid exercise_id", 400);
     }
+    // Only exercises from the public catalog, and only the fields the
+    // catalog shows (not who added it or its admin-only state).
     const exercise = await fetchOneFromTable({
         table: EXERCISES_TABLE,
-        where: [{ field: "id", operator: "=", value: exerciseId }],
-    }) as ExercisesInterface | null;
+        where: [
+            { field: "id", operator: "=", value: exerciseId },
+            { field: "visibility", operator: "=", value: "public" },
+        ],
+        select: ["id", "name", "slug", "image_url", "description"],
+    }) as Pick<ExercisesInterface, "id" | "name" | "slug" | "image_url" | "description"> | null;
     if (!exercise) {
         throw new AppError("Exercise not found", 404);
     }
     return exercise;
+}
+
+/**
+ * The plan exercise a set is being logged against, if this user may log
+ * against it: a row added just for this workout session, or a planned row of
+ * a plan that is public or the user's own. Not the plan version the session
+ * is on right now: sets logged offline can sync after the plan was reset.
+ */
+const getLoggableProgramExerciseOrThrow = async (userId: string, sessionId: string, programExerciseId: string) => {
+    const programExercise = await fetchOneFromTable({
+        table: WORKOUT_PROGRAM_EXERCISES_TABLE,
+        where: [{ field: "id", operator: "=", value: programExerciseId }],
+    }) as WorkoutProgramExercisesInterface | null;
+    if (programExercise) {
+        if (programExercise.workout_session_id) {
+            if (programExercise.workout_session_id === sessionId) {
+                return programExercise;
+            }
+        } else {
+            const version = await fetchPlanVersionForAccessCheckRepository(programExercise.workout_program_version_id);
+            const isPublic = version?.program_visibility === "public" && version.version_visibility === "public";
+            if (version && (isPublic || version.version_owner_user_id === userId)) {
+                return programExercise;
+            }
+        }
+    }
+    throw new AppError("Exercise not found in plan", 404);
 }
 
 /** Next free `exercise_order` at the end of a plan session. */
@@ -1128,13 +1162,7 @@ export const createWorkoutSetService = async (data: {
 
     const session = await getOwnedWorkoutSessionOrThrow(userId, workout_session_id);
 
-    const programExercise = await fetchOneFromTable({
-        table: WORKOUT_PROGRAM_EXERCISES_TABLE,
-        where: [{ field: "id", operator: "=", value: workout_program_exercise_id }],
-    }) as WorkoutProgramExercisesInterface | null;
-    if (!programExercise) {
-        throw new AppError("Exercise not found in plan", 404);
-    }
+    const programExercise = await getLoggableProgramExerciseOrThrow(userId, session.id, workout_program_exercise_id);
 
     // Only main sets (parent_set_id IS NULL) count toward "Set N" numbering —
     // dropset children share their parent's set_order, not their own slot.
@@ -1283,7 +1311,7 @@ export type BatchSetResult =
  */
 export const createWorkoutSetsBatchService = async (data: {
     userId?: string,
-    sets?: BatchSetInput[],
+    sets?: unknown[],
 }): Promise<{ results: BatchSetResult[] }> => {
     const { userId, sets } = data;
     if (!userId) {
@@ -1299,7 +1327,19 @@ export const createWorkoutSetsBatchService = async (data: {
 
     const results: BatchSetResult[] = [];
 
-    for (const item of sets) {
+    for (const rawItem of sets) {
+        // Each item is checked here rather than in the route schema, so one
+        // malformed queued set gets its own error instead of failing the batch.
+        const parsed = batchSetItem.safeParse(rawItem);
+        if (!parsed.success) {
+            const rawClientId = (rawItem as { client_id?: unknown } | null)?.client_id;
+            if (typeof rawClientId === "string" && rawClientId) {
+                const issue = parsed.error.issues[0];
+                results.push({ client_id: rawClientId, error: issue ? `${issue.path.join(".")}: ${issue.message}` : "Invalid set" });
+            }
+            continue;
+        }
+        const item: BatchSetInput = parsed.data;
         const {
             client_id,
             workout_session_id,
@@ -1341,20 +1381,13 @@ export const createWorkoutSetsBatchService = async (data: {
                 sessionCache.set(workout_session_id, session);
             }
 
-            let programExercise = programExerciseCache.get(workout_program_exercise_id);
+            const groupKey = `${session.id}::${workout_program_exercise_id}`;
+            let programExercise = programExerciseCache.get(groupKey);
             if (!programExercise) {
-                const found = await fetchOneFromTable({
-                    table: WORKOUT_PROGRAM_EXERCISES_TABLE,
-                    where: [{ field: "id", operator: "=", value: workout_program_exercise_id }],
-                }) as WorkoutProgramExercisesInterface | null;
-                if (!found) {
-                    throw new AppError("Exercise not found in plan", 404);
-                }
-                programExercise = found;
-                programExerciseCache.set(workout_program_exercise_id, programExercise);
+                programExercise = await getLoggableProgramExerciseOrThrow(userId, session.id, workout_program_exercise_id);
+                programExerciseCache.set(groupKey, programExercise);
             }
 
-            const groupKey = `${session.id}::${workout_program_exercise_id}`;
             let setOrder = nextSetOrderByGroup.get(groupKey);
             if (setOrder == null) {
                 const existingMainSets = await fetchManyFromTable({

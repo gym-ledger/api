@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-npm run migrate
-npm run seed:admin
-npm run seed:exercises
+# The compiled scripts (dist/), not `npm run …`: the image has no dev
+# dependencies, so no tsx.
+node dist/scripts/run-migrations.js
+node dist/scripts/seed-admin.js
+node dist/scripts/seed-exercises.js
 
 exec "$@"

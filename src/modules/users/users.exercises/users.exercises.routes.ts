@@ -7,11 +7,14 @@ import {
     listMusclesForUser,
 } from "./users.exercises.controller.js";
 
+import { noInput, uuidParams, validate } from "../../../middleware/validate.js";
+import { listExercisesQuery } from "./users.exercises.schemas.js";
+
 const usersExercisesRouter = Router();
 
 // Registered before "/:id" so the literal path isn't swallowed by the param route.
-usersExercisesRouter.get("/muscles", verifyUserToken, asyncHandler(listMusclesForUser));
-usersExercisesRouter.get("/", verifyUserToken, asyncHandler(listExercisesForUser));
-usersExercisesRouter.get("/:id", verifyUserToken, asyncHandler(getExerciseForUser));
+usersExercisesRouter.get("/muscles", verifyUserToken, validate({ query: noInput, body: noInput }), asyncHandler(listMusclesForUser));
+usersExercisesRouter.get("/", verifyUserToken, validate({ query: listExercisesQuery, body: noInput }), asyncHandler(listExercisesForUser));
+usersExercisesRouter.get("/:id", verifyUserToken, validate({ params: uuidParams("id"), query: noInput, body: noInput }), asyncHandler(getExerciseForUser));
 
 export default usersExercisesRouter;

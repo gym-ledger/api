@@ -1,3 +1,4 @@
+import { IMPORT_CONCURRENCY, mapWithConcurrency } from "../../../../utils/concurrency.js";
 import { MUSCLES_TABLE, MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
 import { AppError } from "../../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../../utils/validation.js";
@@ -349,7 +350,7 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
     }[];
     const processedData: { muscle: MusclesInterface, tempId: string | null }[] = [];
     const pendingData: { id: string, parent_muscle_id: string | null, children_muscles: string[] }[] = [];
-    await Promise.all(muscles.map(async (muscle) => {
+    await mapWithConcurrency(muscles, IMPORT_CONCURRENCY, async (muscle) => {
         try {
             const payloadToSave = {
                 ...muscle
@@ -386,8 +387,8 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
                 message: error instanceof AppError ? error.message : "Unknown error",
             });
         }
-    }));
-    await Promise.all(pendingData.map(async (muscle) => {
+    });
+    await mapWithConcurrency(pendingData, IMPORT_CONCURRENCY, async (muscle) => {
         try {
             if (!muscle.id) {
                 throw new AppError("Muscle id is required", 400);
@@ -433,7 +434,7 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
             });
         }
 
-    }));
+    });
 
     return { errors, success: processedData.length, totalErrors: errors.length };
 }

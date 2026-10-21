@@ -10,6 +10,9 @@ import { parseCsv } from "../../../utils/csv.js";
 import { prettyFloat } from "../../../utils/math.js";
 import { USER_WEIGHT_VIEWS_TABLE, UserWeightViewsInterface } from "../../../db/schemas/users/weight/userWeightViews.schema.js";
 
+/** About five years of daily weigh-ins (S-14). */
+const WEIGHT_IMPORT_MAX_ROWS = 2000;
+
 export const getUserWeightInViewService = async ({
     userId,
     viewId,
@@ -317,6 +320,8 @@ export const importUserWeightEntriesService = async ({
         throw new AppError("User ID is required", 400);
     }
     const weightEntries = await parseCsv({
+        // Each row recalculates the moving averages, one after another.
+        maxRows: WEIGHT_IMPORT_MAX_ROWS,
         buffer: file.buffer, mapRow: (row) => {
             return {
                 date: row.date,
@@ -329,7 +334,7 @@ export const importUserWeightEntriesService = async ({
     }[];
     // Promise.all led to race-conditions on createEntryService's reCalculateUserWeightMovingAverages fn
     // await Promise.all(weightEntries.map(async (weightEntry) => {
-    for (const weightEntry of weightEntries) {
+    for (const [index, weightEntry] of weightEntries.entries()) {
         try {
             if (!weightEntry.date) {
                 throw new AppError("Date is required", 400);
@@ -354,6 +359,10 @@ export const importUserWeightEntriesService = async ({
             });
         } catch (error) {
             // console.log(error);
+            // Row 1 is the header line.
+            if (error instanceof AppError && error.statusCode < 500) {
+                throw new AppError(`Row ${index + 2}: ${error.message}`, 400);
+            }
             throw new AppError("Error importing weight entries", 500);
         }
     }
