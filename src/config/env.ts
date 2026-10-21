@@ -102,6 +102,14 @@ const envSchema = z.object({
     // per-day quota (about 1,000 on the large models) so a burst of users
     // can't push every request into 429s.
     GROQ_DAILY_REQUEST_LIMIT: z.coerce.number().int().min(0).default(900),
+
+    // CAPTCHA on the "send code" endpoints (infrastructure/captcha).
+    //   altcha  self-hosted proof-of-work, nothing sent to a third party (default)
+    //   none    no CAPTCHA (local testing, or behind your own bot protection)
+    CAPTCHA_PROVIDER: z.enum(["altcha", "none"]).default("altcha"),
+    // Signs ALTCHA challenges. Required in production (generate-secrets.sh
+    // fills it in); in development one is derived from ACCESS_TOKEN_SECRET.
+    CAPTCHA_SECRET: optionalString.pipe(z.string().min(32, "must be at least 32 characters").optional()),
 }).superRefine((env, ctx) => {
     const requireKey = (key: keyof typeof env, why: string) => {
         if (!env[key]) {
@@ -116,6 +124,9 @@ const envSchema = z.object({
         requireKey("EMAIL_FROM", "in production (email OTP delivery)");
         if (env.CORS_ORIGINS.length === 0) {
             ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "required in production" });
+        }
+        if (env.CAPTCHA_PROVIDER === "altcha") {
+            requireKey("CAPTCHA_SECRET", "in production when CAPTCHA_PROVIDER=altcha");
         }
         // A universal login code for every account; dev/testing only.
         if (env.MASTER_LOGIN_OTP) {

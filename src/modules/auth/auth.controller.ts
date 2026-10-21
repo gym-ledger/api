@@ -11,6 +11,8 @@ import {
     getAuthConfigService
 } from "./auth.service.js";
 import { responseSend } from '../../helpers/response-send.js';
+import { captcha } from "../../infrastructure/captcha/index.js";
+import { AppError } from "../../shared/errors/AppError.js";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../../utils/refreshTokenCookie.js";
 
 /**
@@ -30,6 +32,21 @@ const sendSession = <T extends { refreshToken: string, refreshTokenExpiresAt: Da
 export const getAuthConfig = async (_req: Request, res: Response, next: NextFunction) => {
     try {
         responseSend(res, 200, "Auth config", getAuthConfigService());
+    } catch (error) {
+        next(error);
+    }
+}
+
+/**
+ * A fresh CAPTCHA challenge for the widget. Sent as the bare challenge JSON
+ * (no response envelope), which is the shape the widget reads.
+ */
+export const getCaptchaChallenge = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        if (!captcha?.createChallenge) {
+            throw new AppError("No CAPTCHA challenge is needed on this server", 404);
+        }
+        res.set("Cache-Control", "no-store").json(await captcha.createChallenge());
     } catch (error) {
         next(error);
     }

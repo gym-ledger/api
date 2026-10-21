@@ -9,6 +9,7 @@ import { USERS_TABLE, UsersInterface } from "../../db/schemas/users/users.schema
 import { generateRefreshToken, generateUserAccessToken, hashPassword, validateNewPassword, verifyPassword } from "../../utils/authentication.js";
 import { hashToken } from "../../utils/crypto.js";
 import { toPublicUser } from "../../utils/users/users.utils.js";
+import { captcha } from "../../infrastructure/captcha/index.js";
 import { env } from "../../config/env.js";
 import { USER_SESSIONS_TABLE } from "../../db/schemas/auth/user_sessions.schema.js";
 import { UserSessionsInterface } from "../../db/schemas/auth/user_sessions.schema.js";
@@ -96,6 +97,8 @@ const assertOtpMethodAvailable = (method: string) => {
 /** What the front-ends need to know to render the sign-in options. */
 export const getAuthConfigService = () => ({
     phoneOtpEnabled: env.PHONE_OTP_ENABLED,
+    // null = no CAPTCHA; otherwise what the widget needs (provider, challenge path).
+    captcha: captcha?.clientConfig() ?? null,
 });
 
 /**

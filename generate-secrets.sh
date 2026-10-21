@@ -30,10 +30,20 @@ replace_if_placeholder() {
     sedi "s|^${key}=${PLACEHOLDER}$|${key}=${value}|" .env
 }
 
+# ── Secrets added after an existing .env was made ─────────────────────────────
+# A .env copied from an older template has no line for these at all; add them
+# as placeholders so the loop below generates them.
+for key in CAPTCHA_SECRET; do
+    if ! grep -qE "^${key}=" .env; then
+        printf '\n%s=%s\n' "$key" "$PLACEHOLDER" >> .env
+        echo "==> Added      $key (missing from .env)"
+    fi
+done
+
 # ── Generate each secret that still holds the placeholder ─────────────────────
 changed=false
 
-for key in POSTGRES_PASSWORD DATABASE_PASSWORD REDIS_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET DEFAULT_ADMIN_PASSWORD; do
+for key in POSTGRES_PASSWORD DATABASE_PASSWORD REDIS_PASSWORD ACCESS_TOKEN_SECRET ADMIN_ACCESS_TOKEN_SECRET CAPTCHA_SECRET DEFAULT_ADMIN_PASSWORD; do
     if grep -qE "^${key}=${PLACEHOLDER}$" .env; then
         replace_if_placeholder "$key" "$(openssl rand -hex 32)"
         echo "==> Generated  $key"
