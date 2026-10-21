@@ -26,6 +26,15 @@ import {
     UserActivityRow,
     UserSortField,
 } from "./adminAnalytics.repository.js";
+import {
+    fetchAttentionCountsRepository,
+    fetchContentHealthRepository,
+    fetchRecentSignupsRepository,
+    fetchTopExercisesRepository,
+    fetchTopProgramsRepository,
+    fetchWeeklyPulseRepository,
+    fetchWorkoutsPerDayRepository,
+} from "./adminDashboard.repository.js";
 
 type Query = Record<string, unknown>;
 
@@ -227,6 +236,50 @@ export const getOverviewService = async (query: Query) => {
         users: totals,
         active,
         new_users_per_week: newUsersPerWeek,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — the admin home page: this week against last, what users
+// train with, and what needs fixing. Takes no range; every window is fixed.
+// ---------------------------------------------------------------------------
+
+const DASHBOARD_DAYS = 30;
+const DASHBOARD_TOP = 5;
+
+export const getDashboardService = async () => {
+    const [pulse, perDay, topPrograms, topExercises, content, attention, signups, aiCounter] = await Promise.all([
+        fetchWeeklyPulseRepository(),
+        fetchWorkoutsPerDayRepository(DASHBOARD_DAYS),
+        fetchTopProgramsRepository(DASHBOARD_TOP),
+        fetchTopExercisesRepository(DASHBOARD_TOP),
+        fetchContentHealthRepository(),
+        fetchAttentionCountsRepository(),
+        fetchRecentSignupsRepository(DASHBOARD_TOP),
+        readDailyBudgetCounter(),
+    ]);
+    return {
+        generated_at: new Date().toISOString(),
+        pulse,
+        workouts_per_day: perDay,
+        top_programs: topPrograms,
+        top_exercises: topExercises,
+        content,
+        attention: {
+            ...attention,
+            ai_configured: isLlmConfigured(),
+            ai_daily_limit: env.GROQ_DAILY_REQUEST_LIMIT,
+            // Calls counted against today's limit; null if Redis is unreachable.
+            ai_budget_used_today: aiCounter,
+        },
+        recent_signups: signups.map((row) => ({
+            id: row.id,
+            name: displayName(row),
+            email: maskEmail(row.email),
+            phone: maskPhone(row.phone_country_code, row.phone_number),
+            created_at: row.created_at,
+            onboarded: row.onboarded_at != null,
+        })),
     };
 }
 

@@ -4,6 +4,7 @@ import {
     getAiDailyForAdmin,
     getAiSummaryForAdmin,
     getCheckinOutcomesForAdmin,
+    getDashboardForAdmin,
     getOverviewForAdmin,
     listUsersForAdmin,
     retryCheckinForAdmin,
@@ -15,6 +16,7 @@ import {
 // defined in algorithms/user-activity.md.
 const adminAnalyticsRouter = Router();
 
+adminAnalyticsRouter.get("/dashboard", asyncHandler(getDashboardForAdmin));
 adminAnalyticsRouter.get("/overview", asyncHandler(getOverviewForAdmin));
 
 adminAnalyticsRouter.get("/ai/summary", asyncHandler(getAiSummaryForAdmin));

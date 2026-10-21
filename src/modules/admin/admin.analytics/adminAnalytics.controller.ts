@@ -4,11 +4,21 @@ import {
     getAiDailyService,
     getAiSummaryService,
     getCheckinOutcomesService,
+    getDashboardService,
     getOverviewService,
     listUsersService,
     viewUserService,
 } from "./adminAnalytics.service.js";
 import { retryWeeklyCheckinService } from "../../users/users.checkins/users.checkins.service.js";
+
+export const getDashboardForAdmin = async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await getDashboardService();
+        return responseSend(res, 200, "Dashboard fetched successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
 
 export const getOverviewForAdmin = async (req: Request, res: Response, next: NextFunction) => {
     try {
