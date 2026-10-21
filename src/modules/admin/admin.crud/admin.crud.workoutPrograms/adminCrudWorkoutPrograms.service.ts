@@ -523,7 +523,7 @@ export const createWorkoutProgramForAdminService = async (data: {
             program_days: responseDays,
         };
     } catch (error) {
-        console.log(error);
+        // console.log(error);
         await deleteOneFromTable({
             table: WORKOUT_PROGRAMS_TABLE,
             where: [
@@ -740,7 +740,7 @@ export const createWorkoutProgramVersionForAdminService = async (data: {
             program_days: responseDays,
         };
     } catch (error) {
-        console.log(error);
+        // console.log(error);
         await deleteOneFromTable({
             table: WORKOUT_PROGRAM_VERSIONS_TABLE,
             where: [{ field: "id", operator: "=", value: newVersion.id }],

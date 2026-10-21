@@ -1,3 +1,5 @@
+/* eslint-disable no-useless-catch -- the catch blocks below only held debug logs, now
+   commented out; they rethrow, and errorHandler logs the error. */
 import { pg } from "../../infrastructure/postgres/index.js";
 
 export const allowedTables = [
@@ -369,9 +371,9 @@ export const fetchPaginatedResultsFromTable = async ({
 
     } catch (error) {
 
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -435,9 +437,9 @@ export const fetchManyFromTable = async ({
         return rowsResult.rows;
 
     } catch (error) {
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -672,9 +674,9 @@ export const fetchOneFromTable = async ({
 
     } catch (error) {
 
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -740,9 +742,9 @@ export const addOneInTable = async ({
 
     } catch (error) {
 
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -813,10 +815,10 @@ export const updateOneInTable = async ({
 
     } catch (error) {
 
-        console.log(data);
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(data);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -864,9 +866,9 @@ export const deleteOneFromTable = async ({
 
         } catch (error) {
 
-            console.log(query);
-            console.log(values);
-            console.log(error);
+            // console.log(query);
+            // console.log(values);
+            // console.log(error);
 
             throw error;
         }
@@ -890,9 +892,9 @@ export const deleteOneFromTable = async ({
 
         } catch (error) {
 
-            console.log(query);
-            console.log(values);
-            console.log(error);
+            // console.log(query);
+            // console.log(values);
+            // console.log(error);
 
             throw error;
         }
@@ -963,9 +965,9 @@ export const addManyInTable = async ({
 
     } catch (error) {
 
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -1020,9 +1022,9 @@ export const deleteManyInTable = async ({
 
         } catch (error) {
 
-            console.log(query);
-            console.log(values);
-            console.log(error);
+            // console.log(query);
+            // console.log(values);
+            // console.log(error);
 
             throw error;
         }
@@ -1046,9 +1048,9 @@ export const deleteManyInTable = async ({
 
     } catch (error) {
 
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }
@@ -1122,10 +1124,10 @@ export const updateManyInTable = async ({
 
     } catch (error) {
 
-        console.log(data);
-        console.log(query);
-        console.log(values);
-        console.log(error);
+        // console.log(data);
+        // console.log(query);
+        // console.log(values);
+        // console.log(error);
 
         throw error;
     }

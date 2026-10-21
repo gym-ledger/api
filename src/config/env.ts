@@ -117,6 +117,10 @@ const envSchema = z.object({
         if (env.CORS_ORIGINS.length === 0) {
             ctx.addIssue({ code: "custom", path: ["CORS_ORIGINS"], message: "required in production" });
         }
+        // A universal login code for every account; dev/testing only.
+        if (env.MASTER_LOGIN_OTP) {
+            ctx.addIssue({ code: "custom", path: ["MASTER_LOGIN_OTP"], message: "must not be set in production (it logs anyone in as any account)" });
+        }
     }
     if (env.RESEND_API_KEY && !env.EMAIL_FROM) {
         requireKey("EMAIL_FROM", "when RESEND_API_KEY is set");

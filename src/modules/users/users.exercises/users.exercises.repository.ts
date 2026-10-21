@@ -22,8 +22,8 @@ export const fetchMusclesForUserRepository = async (): Promise<UserMuscleRow[]> 
         const result = await pg.query(query);
         return result.rows as UserMuscleRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch muscles", 500);
     }
 }
@@ -137,8 +137,8 @@ export const fetchExercisesForUserRepository = async (data: {
             totalCount,
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch exercises", 500);
     }
 }
@@ -183,8 +183,8 @@ export const fetchExerciseDetailForUserRepository = async (
             })),
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch exercise", 500);
     }
 }

@@ -34,8 +34,8 @@ export const fetchWorkoutProgramVersionUsageCountsRepository = async (
             result.rows.map((row) => [row.version_id as string, Number(row.usage_count)]),
         );
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout program version usage counts", 500);
     }
 }

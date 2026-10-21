@@ -53,8 +53,8 @@ export const fetchMuscleSignalsForUserRepository = async (userId: string): Promi
             fatigue_value: row.fatigue_value == null ? null : Number(row.fatigue_value),
         })) as MuscleSignalRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch muscle signals", 500);
     }
 }

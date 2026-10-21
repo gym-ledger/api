@@ -34,7 +34,7 @@ export const reCalculateUserWeightMovingAverages = async ({
         }
         // from = date minus 6 days
         // to = date plus 6 days
-        console.log("CURRENT DATE", date);
+        // console.log("CURRENT DATE", date);
         const from = DateTime.fromISO(date, { zone: "Asia/Kolkata" }).minus({ days: 7 }).toISO();
         const to = DateTime.fromISO(date, { zone: "Asia/Kolkata" }).plus({ days: 5 }).toISO();
         const weightEntries = await fetchManyFromTable({
@@ -60,17 +60,17 @@ export const reCalculateUserWeightMovingAverages = async ({
                 date: "asc",
             },
         }) as Partial<UserWeightEntriesInterface>[];
-        console.log(weightEntries);
-        console.log(from)
-        console.log(to)
-        console.log(userId)
+        // console.log(weightEntries);
+        // console.log(from)
+        // console.log(to)
+        // console.log(userId)
         const dayPayload: Record<string, { three_day_average: number, seven_day_average: number }> = {};
         let threeDayVals: number[] = [prettyFloat(weightEntries?.[0]?.weight || 0)];
         let sevenDayVals: number[] = [prettyFloat(weightEntries?.[0]?.weight || 0)];
         for (let i = 1; i < weightEntries.length; i++) {
             // is today one day after last day?
             if (!weightEntries[i].day || !weightEntries[i - 1].day) {
-                console.log("No day found");
+                // console.log("No day found");
                 threeDayVals = [prettyFloat(weightEntries[i].weight || 0)];
                 sevenDayVals = [prettyFloat(weightEntries[i].weight || 0)];
                 continue;
@@ -78,12 +78,12 @@ export const reCalculateUserWeightMovingAverages = async ({
             const currentDay = DateTime.fromISO(weightEntries[i].day as string, { zone: "utc" });
             const lastDay = DateTime.fromISO(weightEntries[i - 1].day as string, { zone: "utc" });
             // if only one day away
-            console.log(lastDay.diff(currentDay, 'days').days);
+            // console.log(lastDay.diff(currentDay, 'days').days);
             if (lastDay.diff(currentDay, 'days').days === -1) {
                 threeDayVals.push(prettyFloat(weightEntries[i].weight || 0));
                 sevenDayVals.push(prettyFloat(weightEntries[i].weight || 0));
             } else {
-                console.log("Not one day away");
+                // console.log("Not one day away");
                 threeDayVals = [prettyFloat(weightEntries[i].weight || 0)];
                 sevenDayVals = [prettyFloat(weightEntries[i].weight || 0)];
             }
@@ -147,7 +147,7 @@ export const reCalculateUserWeightMovingAverages = async ({
                 }
             }
         }));
-        console.log(dayPayload);
+        // console.log(dayPayload);
         // any views that have dates between from and to, recalculate the summary
         const fixedTillNowViews = await fetchManyFromTable({
             table: USER_WEIGHT_VIEWS_TABLE,

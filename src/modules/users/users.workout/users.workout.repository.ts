@@ -49,8 +49,8 @@ export const fetchPublicWorkoutPlansRepository = async (): Promise<PublicWorkout
         const result = await pg.query(query);
         return result.rows as PublicWorkoutPlanRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch public workout plans", 500);
     }
 }
@@ -88,8 +88,8 @@ export const fetchLatestPublicVersionForProgramRepository = async (
         const result = await pg.query(query, [workoutProgramId]);
         return (result.rows[0] as PublicWorkoutPlanRow) ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to resolve workout plan version", 500);
     }
 }
@@ -151,8 +151,8 @@ export const fetchPlanVersionForAccessCheckRepository = async (
         const result = await pg.query(query, [workoutProgramVersionId]);
         return (result.rows[0] as PlanVersionAccessRow) ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout plan version", 500);
     }
 }
@@ -171,8 +171,8 @@ export const userHasAssignmentForVersionRepository = async (
         const result = await pg.query(query, [userId, workoutProgramVersionId]);
         return (result.rowCount ?? 0) > 0;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to check workout plan access", 500);
     }
 }
@@ -300,8 +300,8 @@ export const fetchPlanDetailTreeRepository = async (
             sessions: sessionsByDay.get(day.id) ?? [],
         }));
     } catch (error) {
-        console.log(daysQuery);
-        console.log(error);
+        // console.log(daysQuery);
+        // console.log(error);
         throw new AppError("Failed to fetch workout plan detail", 500);
     }
 }
@@ -364,8 +364,8 @@ export const fetchUserAssignmentsRepository = async (data: {
         const result = await pg.query(query, [userId]);
         return result.rows as UserProgramAssignmentRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout plan selections", 500);
     }
 }
@@ -388,8 +388,8 @@ export const forkAndAssignProgramVersionRepository = async (
         const result = await pg.query(query, [sourceVersionId, userId]);
         return result.rows[0] as UserProgramAssignmentsInterface;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to add workout plan", 500);
     }
 }
@@ -432,7 +432,7 @@ export const resetAssignmentToSourceVersionRepository = async (data: {
         return updated.rows[0] as UserProgramAssignmentsInterface;
     } catch (error) {
         await client.query("ROLLBACK");
-        console.log(error);
+        // console.log(error);
         throw new AppError("Failed to update workout plan", 500);
     } finally {
         client.release();
@@ -460,8 +460,8 @@ export const fetchUserAssignmentForSourceProgramRepository = async (
         const result = await pg.query(query, [userId, sourceProgramId]);
         return (result.rows[0] as UserProgramAssignmentsInterface) ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout plan selection", 500);
     }
 }
@@ -497,7 +497,7 @@ export const reorderPlanSessionExercisesRepository = async (
         await client.query("COMMIT");
     } catch (error) {
         await client.query("ROLLBACK");
-        console.log(error);
+        // console.log(error);
         throw new AppError("Failed to reorder exercises", 500);
     } finally {
         client.release();
@@ -546,8 +546,8 @@ export const applyPerformedTargetsRepository = async (workoutSessionId: string):
     try {
         await pg.query(query, [workoutSessionId]);
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to save planned sets for added exercises", 500);
     }
 }
@@ -592,8 +592,8 @@ export const fetchNonEmptyProgramDaysRepository = async (
         const result = await pg.query(query, [workoutProgramVersionId]);
         return result.rows as ProgramDayRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch program days", 500);
     }
 }
@@ -630,8 +630,8 @@ export const fetchNonEmptyProgramDaySessionsRepository = async (
         const result = await pg.query(query, [workoutProgramDayId]);
         return result.rows as ProgramDaySessionRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch program day sessions", 500);
     }
 }
@@ -660,8 +660,8 @@ export const fetchRequiredWeekdaysRepository = async (
         const result = await pg.query(query, [workoutProgramVersionIds]);
         return result.rows.map((row) => Number(row.day_number));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch required training weekdays", 500);
     }
 }
@@ -688,8 +688,8 @@ export const fetchWorkedOutDatesRepository = async (
         const result = await pg.query(query, [userId, timezone, sinceDate]);
         return result.rows.map((row) => row.worked_date as string);
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout dates", 500);
     }
 }
@@ -724,8 +724,8 @@ export const fetchTonnageSinceRepository = async (
         const result = await pg.query(query, params);
         return Number(result.rows[0]?.total ?? 0);
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to compute training volume", 500);
     }
 }
@@ -805,8 +805,8 @@ export const fetchRecentPRsRepository = async (
             e1rm: Number(row.e1rm),
         }));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch personal records", 500);
     }
 }
@@ -832,8 +832,8 @@ export const fetchWorkoutCountAndAvgDurationRepository = async (
             avg_duration_seconds: row?.avg_duration_seconds != null ? Number(row.avg_duration_seconds) : null,
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to compute workout stats", 500);
     }
 }
@@ -871,8 +871,8 @@ export const fetchWeeklyVolumeSeriesRepository = async (
             volume: Number(row.volume),
         }));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to compute weekly volume series", 500);
     }
 }
@@ -1007,8 +1007,8 @@ export const fetchExerciseHistoryRepository = async (data: {
         }
         return Array.from(sessionsById.values());
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch exercise history", 500);
     }
 }
@@ -1108,8 +1108,8 @@ export const fetchWorkoutSessionsRepository = async (data: {
             totalCount,
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch workout sessions", 500);
     }
 }
@@ -1162,8 +1162,8 @@ export const fetchOngoingWorkoutSessionRepository = async (
         const result = await pg.query(query, [userId]);
         return result.rows[0] ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch ongoing workout session", 500);
     }
 }
@@ -1308,8 +1308,8 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
             exercises,
         };
     } catch (error) {
-        console.log(sessionQuery, setsQuery);
-        console.log(error);
+        // console.log(sessionQuery, setsQuery);
+        // console.log(error);
         throw new AppError("Failed to fetch workout session detail", 500);
     }
 }
@@ -1342,8 +1342,8 @@ export const fetchActiveAlarmsRepository = async (userId: string): Promise<Activ
         const result = await pg.query(query, [userId]);
         return result.rows as ActiveAlarmRow[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch active alarms", 500);
     }
 }

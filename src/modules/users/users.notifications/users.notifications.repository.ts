@@ -66,7 +66,7 @@ export const postNotificationRepository = async (data: {
         return inserted.rows[0] ?? null;
     } catch (error) {
         await client.query("ROLLBACK").catch(() => undefined);
-        console.log(error);
+        // console.log(error);
         throw new AppError("Failed to post notification", 500);
     } finally {
         client.release();
@@ -85,8 +85,8 @@ export const clearNotificationGroupRepository = async (userId: string, groupKey:
     try {
         await pg.query(query, [userId, groupKey]);
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to clear notifications", 500);
     }
 }
@@ -107,8 +107,8 @@ export const fetchNotificationsRepository = async (
         const result = await pg.query(query, [userId, limit]);
         return result.rows;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch notifications", 500);
     }
 }
@@ -125,8 +125,8 @@ export const countUnreadNotificationsRepository = async (userId: string): Promis
         const result = await pg.query(query, [userId]);
         return Number(result.rows[0]?.unread ?? 0);
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to count notifications", 500);
     }
 }
@@ -148,8 +148,8 @@ export const markNotificationsReadRepository = async (
         const result = await pg.query(query, notificationId ? [userId, notificationId] : [userId]);
         return result.rowCount ?? 0;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to mark notifications read", 500);
     }
 }

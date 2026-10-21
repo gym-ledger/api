@@ -49,8 +49,8 @@ export const fetchWeekSessionSummaryRepository = async (
             dates: row?.dates ?? [],
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to summarise the week's workouts", 500);
     }
 }
@@ -81,8 +81,8 @@ export const fetchWeekSetCountsRepository = async (
             sets_with_discomfort: Number(result.rows[0]?.sets_with_discomfort ?? 0),
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to count the week's sets", 500);
     }
 }
@@ -139,8 +139,8 @@ export const fetchMuscleWeekSetsRepository = async (
             usual_sets: Number(row.usual_sets),
         }));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to compute sets per muscle", 500);
     }
 }
@@ -220,8 +220,8 @@ export const fetchExerciseWeekProgressRepository = async (
             sessions_recent: Number(row.sessions_recent),
         }));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to compute exercise progress", 500);
     }
 }
@@ -243,8 +243,8 @@ export const fetchWeightEntriesBetweenRepository = async (
         const result = await pg.query(query, [userId, fromDate, toDate]);
         return result.rows.map((row) => ({ date: row.date, weight: Number(row.weight) }));
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch weight entries", 500);
     }
 }
@@ -280,8 +280,8 @@ export const fetchLastActivityRepository = async (
             last_workout: result.rows[0]?.last_workout ?? null,
         };
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch last activity", 500);
     }
 }
@@ -326,8 +326,8 @@ export const fetchWeeklyCheckinRepository = async (
         const result = await pg.query(query, [userId, weekStart]);
         return result.rows[0] ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch weekly check-in", 500);
     }
 }
@@ -345,8 +345,8 @@ export const fetchWeeklyCheckinByIdRepository = async (
         const result = await pg.query(query, [id]);
         return result.rows[0] ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to fetch weekly check-in", 500);
     }
 }
@@ -370,8 +370,8 @@ export const makeWeeklyCheckinRetryDueRepository = async (
         const result = await pg.query(query, [id]);
         return result.rows[0] ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to update weekly check-in", 500);
     }
 }
@@ -415,7 +415,7 @@ export const claimWeeklyCheckinRepository = async (
         const updated = await pg.query(takeOver, params);
         return updated.rows[0] ?? null;
     } catch (error) {
-        console.log(error);
+        // console.log(error);
         throw new AppError("Failed to claim weekly check-in", 500);
     }
 }
@@ -446,8 +446,8 @@ export const saveSkippedWeeklyCheckinRepository = async (
         const result = await pg.query(query, [userId, weekStart, JSON.stringify(stats), JSON.stringify(skipReasons), nextRetryAt]);
         return result.rows[0] ?? null;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to save weekly check-in", 500);
     }
 }
@@ -471,8 +471,8 @@ export const completeWeeklyCheckinRepository = async (
         const result = await pg.query(query, [id, JSON.stringify(content), model]);
         return result.rows[0];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to save weekly check-in", 500);
     }
 }
@@ -492,8 +492,8 @@ export const failWeeklyCheckinRepository = async (
         const result = await pg.query(query, [id, nextRetryAt]);
         return result.rows[0];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to update weekly check-in", 500);
     }
 }
@@ -513,8 +513,8 @@ export const dismissWeeklyCheckinRepository = async (
         const result = await pg.query(query, [id, userId]);
         return (result.rowCount ?? 0) > 0;
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to dismiss weekly check-in", 500);
     }
 }

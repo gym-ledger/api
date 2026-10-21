@@ -1,0 +1,104 @@
+# The whole Workout Gym stack on one machine, for trying it out or local
+# development: Postgres, Redis, the API, the user app and the admin panel.
+#
+#   docker compose -f stack/docker-compose.yml up --build
+#
+# Expects the three repos cloned side by side:
+#   workout-gym-api/  gym-app-nextjs/  workout-gym-admin-panel/
+#
+# Everything below is a local-only default (NODE_ENV=development, throwaway
+# secrets, plain http). For a real server use deployment/ instead. See the
+# "Run the whole stack" section of the README.
+name: workout-gym
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workout_gym
+      POSTGRES_PASSWORD: workout_gym
+      POSTGRES_DB: workout_gym
+    # Not published on the host, so it never clashes with a local Postgres.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workout_gym -d workout_gym"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/db/Dockerfile
+    restart: unless-stopped
+    # The image's entrypoint runs migrations, then seeds the first admin and
+    # the exercise library (seeds/exercises.json) before starting.
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      LOG_LEVEL: info
+      DATABASE_URL: postgresql://workout_gym:workout_gym@postgres:5432/workout_gym
+      REDIS_URL: redis://redis:6379
+      ACCESS_TOKEN_SECRET: local-only-user-token-secret
+      ADMIN_ACCESS_TOKEN_SECRET: local-only-admin-token-secret
+      CORS_ORIGINS: http://localhost:${APP_PORT:-3000},http://localhost:${ADMIN_PORT:-3001}
+      DEFAULT_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      DEFAULT_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-local-admin-password}
+      APP_NAME: Workout Gym
+      # Optional. Without a Resend key the login code is printed in the API
+      # log ("OTP issued"); without a Groq key check-ins skip the AI note.
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:4000/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  app:
+    build:
+      context: ../../gym-app-nextjs
+      args:
+        # Baked into the browser bundle, so it is the host's address, not "api".
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}/api/v1
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    build:
+      context: ../../workout-gym-admin-panel
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}/api/v1
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_PORT:-3001}:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

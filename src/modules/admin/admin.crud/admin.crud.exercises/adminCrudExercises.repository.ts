@@ -57,9 +57,9 @@ export const fetchExerciseWithMusclesByIdRepository = async (exerciseId: string)
         if (error instanceof AppError) {
             throw error;
         }
-        console.log(exerciseQuery, musclesQuery);
-        console.log(exerciseId);
-        console.log(error);
+        // console.log(exerciseQuery, musclesQuery);
+        // console.log(exerciseId);
+        // console.log(error);
         throw new AppError("Failed to fetch exercise muscles from exercise id", 500);
     }
 }
@@ -91,8 +91,8 @@ export const fetchExercisesForExportRepository = async () => {
         const result = await pg.query(query);
         return result.rows as (ExercisesInterface & { exerciseMuscles: string })[];
     } catch (error) {
-        console.log(query);
-        console.log(error);
+        // console.log(query);
+        // console.log(error);
         throw new AppError("Failed to export exercises", 500);
     }
 }

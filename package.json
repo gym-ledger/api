@@ -7,6 +7,8 @@
   "scripts": {
     "migrate": "tsx src/scripts/run-migrations.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
+    "seed:exercises": "tsx src/scripts/seed-exercises.ts",
+    "export:exercises": "tsx src/scripts/export-exercises.ts",
     "recompute:muscle-signals": "tsx src/scripts/recompute-muscle-signals.ts",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
@@ -39,6 +41,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
@@ -47,7 +50,10 @@
     "@types/node": "^25.8.0",
     "@types/pg": "^8.20.0",
     "@types/pino-http": "^5.8.4",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
     "tsx": "^4.22.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0"
   }
 }

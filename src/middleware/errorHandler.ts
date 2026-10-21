@@ -16,7 +16,7 @@ export function errorHandler(
     res: Response,
     _next: NextFunction
 ) {
-    console.log(error);
+    // console.log(error);
     if (error instanceof ZodError) {
         logger.warn(
             {

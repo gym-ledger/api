@@ -400,8 +400,8 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
                 if (!isValidUUID(muscle.parent_muscle_id)) {
                     const data = processedData.find((data) => data.tempId === muscle.parent_muscle_id);
                     if (!data) {
-                        console.log(processedData);
-                        console.log(muscle.parent_muscle_id);
+                        // console.log(processedData);
+                        // console.log(muscle.parent_muscle_id);
                         throw new AppError("Parent muscle not found", 404);
                     }
                     parentMuscleId = data.muscle.id;

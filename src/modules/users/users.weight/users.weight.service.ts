@@ -341,19 +341,19 @@ export const importUserWeightEntriesService = async ({
             if (!weight) {
                 throw new AppError("Invalid weight", 400);
             }
-            console.log(weightEntry.date);
+            // console.log(weightEntry.date);
             const dateObj = DateTime.fromISO(weightEntry.date, { zone: "Asia/Kolkata" });
             if (!dateObj.isValid) {
                 throw new AppError("Invalid date", 400);
             }
-            console.log(dateObj.toISO());
+            // console.log(dateObj.toISO());
             await createUserWeightEntryService({
                 userId,
                 weight,
                 date: dateObj.toISO(),
             });
         } catch (error) {
-            console.log(error);
+            // console.log(error);
             throw new AppError("Error importing weight entries", 500);
         }
     }
