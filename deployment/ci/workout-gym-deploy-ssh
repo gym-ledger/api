@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Forced command for the deploy user's GitHub keys (set up by setup-server.sh):
+#
+#   restrict,command="/usr/local/sbin/workout-gym-deploy-ssh api" ssh-ed25519 AAAA...
+#
+# The target is fixed by the key, and the only thing a caller can send is a
+# commit id. A leaked key can do nothing but redeploy what is already on
+# that repo's main branch on GitHub.
+set -euo pipefail
+
+target="${1:-}"
+sha="${SSH_ORIGINAL_COMMAND:-}"
+
+[[ "$target" =~ ^(api|app|admin)$ ]] || { echo "Bad target" >&2; exit 2; }
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Send only the full commit id" >&2; exit 2; }
+
+exec sudo -n /usr/local/sbin/workout-gym-deploy "$target" "$sha"

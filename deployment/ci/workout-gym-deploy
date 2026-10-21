@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# Runs one repo's deploy.sh for a GitHub Actions deploy. Installed by
+# setup-server.sh; called only through sudo by workout-gym-deploy-ssh.
+#
+#   workout-gym-deploy <api|app|admin> <commit sha>
+#
+# What this prints goes back to the GitHub Actions log, which anyone can read
+# once the repo is public. So it prints a short summary only (plus the last
+# lines when deploy.sh fails); the full log stays in /var/log/workout-gym-deploy.
+set -euo pipefail
+umask 077
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export HOME=/root
+# Fail instead of waiting for a password or a host-key prompt.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
+
+CONF=/etc/workout-gym-deploy.conf
+LOG_DIR=/var/log/workout-gym-deploy
+FAIL_TAIL_LINES=30
+KEEP_LOGS_DAYS=30
+
+target="${1:-}"
+sha="${2:-}"
+[[ "$target" =~ ^(api|app|admin)$ ]] || { echo "Unknown target" >&2; exit 2; }
+[[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Expected a full commit id" >&2; exit 2; }
+
+dir="$(sed -n "s/^${target}=//p" "$CONF" | head -n 1)"
+[[ -n "$dir" && -f "$dir/deploy.sh" ]] || { echo "No deploy.sh for $target (see $CONF)" >&2; exit 2; }
+
+mkdir -p "$LOG_DIR"
+find "$LOG_DIR" -name '*.log' -mtime +"$KEEP_LOGS_DAYS" -delete
+log="$LOG_DIR/$(date -u +%Y%m%dT%H%M%SZ)-${target}-${sha:0:7}.log"
+
+# One deploy at a time on this server: the builds are heavy.
+exec 9>/run/lock/workout-gym-deploy.lock
+if ! flock -n 9; then
+    echo "Another deploy is running on the server; waiting for it..."
+    flock 9
+fi
+
+started=$SECONDS
+echo "Deploying $target at ${sha:0:7}..."
+if ! bash "$dir/deploy.sh" >"$log" 2>&1; then
+    echo "deploy.sh failed after $((SECONDS - started))s. Last $FAIL_TAIL_LINES lines (full log on the server: $log):"
+    tail -n "$FAIL_TAIL_LINES" "$log"
+    exit 1
+fi
+
+# deploy.sh pulls the branch tip; make sure it includes the pushed commit.
+head="$(git -C "$dir" rev-parse HEAD)"
+if ! git -C "$dir" merge-base --is-ancestor "$sha" "$head"; then
+    echo "The server is at ${head:0:7}, which doesn't include ${sha:0:7}. Is the server checked out on main?"
+    exit 1
+fi
+echo "Deployed in $((SECONDS - started))s. $target is now at ${head:0:7}."
