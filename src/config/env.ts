@@ -72,11 +72,11 @@ const envSchema = z.object({
     COOKIE_DOMAIN: optionalString,
 
     // Product name shown in OTP emails.
-    APP_NAME: optionalString.transform((v) => v ?? "Workout Gym"),
+    APP_NAME: optionalString.transform((v) => v ?? "Gym Ledger"),
 
     // Email OTP delivery (Resend). Required in production.
     RESEND_API_KEY: optionalString,
-    // Verified sender in Resend, e.g. "Workout Gym <no-reply@example.com>".
+    // Verified sender in Resend, e.g. "Gym Ledger <no-reply@example.com>".
     EMAIL_FROM: optionalString,
 
     // Phone OTP delivery over WhatsApp (Twilio). Off by default; when off,

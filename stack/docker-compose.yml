@@ -1,4 +1,4 @@
-# The whole Workout Gym stack on one machine, for trying it out or local
+# The whole Gym Ledger stack on one machine, for trying it out or local
 # development: Postgres, Redis, the API, the user app and the admin panel.
 #
 #   docker compose -f stack/docker-compose.yml up --build
@@ -55,7 +55,7 @@ services:
       CORS_ORIGINS: http://localhost:${APP_PORT:-3000},http://localhost:${ADMIN_PORT:-3001}
       DEFAULT_ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       DEFAULT_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-local-admin-password}
-      APP_NAME: Workout Gym
+      APP_NAME: Gym Ledger
       # Optional. Without a Resend key the login code is printed in the API
       # log ("OTP issued"); without a Groq key check-ins skip the AI note.
       RESEND_API_KEY: ${RESEND_API_KEY:-}
