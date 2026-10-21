@@ -31,6 +31,8 @@ export interface UserHealthPreferencesInterface {
 
     height: number;
 
+    // weight_goal … goal_set_on are superseded by user_weight_goals
+    // (migration 035) and no longer read or written.
     weight_goal: WeightGoal | null;
 
     weight_goal_preset: WeightGoalPace | null;

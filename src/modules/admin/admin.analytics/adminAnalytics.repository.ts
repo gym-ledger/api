@@ -224,8 +224,8 @@ export const fetchUserTotalsRepository = async (from: string, to: string): Promi
             WHERE upa.user_id = u.id AND upa.is_active = TRUE AND upa.deleted_at IS NULL
         ))::int AS users_with_active_plan,
         COUNT(*) FILTER (WHERE EXISTS (
-            SELECT 1 FROM user_health_preferences hp
-            WHERE hp.user_id = u.id AND hp.deleted_at IS NULL AND hp.weight_goal IS NOT NULL
+            SELECT 1 FROM user_weight_goals g
+            WHERE g.user_id = u.id AND g.deleted_at IS NULL AND g.status = 'active'
         ))::int AS users_with_goal
     FROM users u
     WHERE u.deleted_at IS NULL
@@ -394,8 +394,8 @@ export const fetchUsersWithActivityRepository = async (data: {
                 WHERE upa.user_id = b.id AND upa.is_active = TRUE AND upa.deleted_at IS NULL
             ) AS has_active_plan,
             EXISTS (
-                SELECT 1 FROM user_health_preferences hp
-                WHERE hp.user_id = b.id AND hp.deleted_at IS NULL AND hp.weight_goal IS NOT NULL
+                SELECT 1 FROM user_weight_goals g
+                WHERE g.user_id = b.id AND g.deleted_at IS NULL AND g.status = 'active'
             ) AS has_goal,
             COALESCE(ai.ai_calls, 0) AS ai_calls
         FROM base b
@@ -429,16 +429,18 @@ export const fetchUserProfileRepository = async (userId: string): Promise<{
 } | null> => {
     const result = await pg.query(`
     SELECT
-        timezone,
-        weight_units,
-        weight_goal,
-        weight_goal_preset,
-        target_weight,
-        to_char(goal_date, 'YYYY-MM-DD') AS goal_date,
-        to_char(goal_set_on, 'YYYY-MM-DD') AS goal_set_on
-    FROM user_health_preferences
-    WHERE user_id = $1 AND deleted_at IS NULL
-    ORDER BY updated_at DESC
+        hp.timezone,
+        hp.weight_units,
+        g.weight_goal,
+        g.weight_goal_preset,
+        g.target_weight,
+        to_char(g.goal_date, 'YYYY-MM-DD') AS goal_date,
+        to_char(g.start_date, 'YYYY-MM-DD') AS goal_set_on
+    FROM user_health_preferences hp
+    LEFT JOIN user_weight_goals g
+        ON g.user_id = hp.user_id AND g.status = 'active' AND g.deleted_at IS NULL
+    WHERE hp.user_id = $1 AND hp.deleted_at IS NULL
+    ORDER BY hp.updated_at DESC
     LIMIT 1
     `, [userId]);
     return result.rows[0] ?? null;

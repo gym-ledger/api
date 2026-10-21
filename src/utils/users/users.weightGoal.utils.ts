@@ -190,3 +190,43 @@ export const weeklyWeightSlope = (entries: { date: string, weight: number }[]): 
     }
     return den === 0 ? null : (num / den) * 7;
 }
+
+// ---------------------------------------------------------------------------
+// Ending a goal
+// ---------------------------------------------------------------------------
+
+export const WEIGHT_GOAL_END_STATUSES = ["completed", "finished_early", "cancelled"] as const;
+export type WeightGoalEndStatus = typeof WEIGHT_GOAL_END_STATUSES[number];
+
+export interface WeightGoalEndReason {
+    key: string;
+    label: string;
+    description: string;
+}
+
+/**
+ * Reasons offered when a goal ends before its date or target. Diet fatigue,
+ * stress and life events, plateaus, health and planned maintenance breaks are
+ * the usual ones. Worded neutrally on purpose: stopping a cut or bulk early
+ * is a normal, often sensible call, never a failure.
+ */
+export const WEIGHT_GOAL_END_REASONS: Record<Exclude<WeightGoalEndStatus, "completed">, WeightGoalEndReason[]> = {
+    finished_early: [
+        { key: "planned_break", label: "Planned break", description: "Some time at maintenance before the next phase" },
+        { key: "needed_rest", label: "Needed a rest", description: "Hunger, energy or mood asked for a pause" },
+        { key: "busy_period", label: "Busy period", description: "Work, travel, holidays or events" },
+        { key: "health", label: "Health or injury", description: "Illness, injury or a doctor's advice" },
+        { key: "happy_here", label: "Happy where I am", description: "I like where I've landed" },
+        { key: "new_approach", label: "Trying a new approach", description: "Progress slowed and I want to adjust" },
+        { key: "other", label: "Something else", description: "" },
+    ],
+    cancelled: [
+        { key: "not_right_fit", label: "Not the right fit", description: "The pace or target didn't suit me" },
+        { key: "changing_direction", label: "Changing direction", description: "Moving to a different goal" },
+        { key: "set_by_mistake", label: "Set by mistake", description: "" },
+        { key: "other", label: "Something else", description: "" },
+    ],
+};
+
+export const isWeightGoalEndReason = (status: Exclude<WeightGoalEndStatus, "completed">, value: unknown): value is string =>
+    typeof value === "string" && WEIGHT_GOAL_END_REASONS[status].some((r) => r.key === value);
