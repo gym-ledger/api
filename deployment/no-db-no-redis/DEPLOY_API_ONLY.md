@@ -84,7 +84,7 @@ bash deploy.sh
 This will:
 - Pull latest code from the current branch
 - Copy `deployment/no-db-no-redis/docker-compose.yml` and `Dockerfile` to the project root
-- Build and start the `workout-gym-api` container
+- Build and start the `gym-ledger-api` container
 
 On first start the container entrypoint automatically runs database migrations and seeds the default admin user (`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` from `.env`). Both steps are idempotent and are skipped on subsequent restarts if already applied. In production the seed refuses to run (and the container stops) unless `DEFAULT_ADMIN_EMAIL` is your own address and `DEFAULT_ADMIN_PASSWORD` is at least 12 characters; `generate-secrets.sh` generates the password.
 
@@ -102,7 +102,7 @@ curl http://localhost:4000/health
 View API logs:
 
 ```bash
-docker logs -f workout-gym-api
+docker logs -f gym-ledger-api
 ```
 
 ---
@@ -112,7 +112,7 @@ docker logs -f workout-gym-api
 **API exits immediately on startup**
 Check logs for missing/invalid env vars:
 ```bash
-docker logs workout-gym-api
+docker logs gym-ledger-api
 ```
 
 **Database connection refused**

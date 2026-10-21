@@ -1,8 +1,8 @@
 # Security policy
 
 This project has three repositories that work together: the API
-(`workout-gym-api`), the user web app (`gym-app-nextjs`) and the admin panel
-(`workout-gym-admin-panel`). This policy covers all three.
+(`gym-ledger/api`), the user web app (`gym-ledger/web`) and the admin panel
+(`gym-ledger/admin`). This policy covers all three.
 
 ## Supported versions
 
@@ -15,8 +15,8 @@ problem.**
 
 Report it privately through GitHub: open the **Security** tab of the affected
 repository and choose **Report a vulnerability**
-(https://github.com/itsmohitchahal/workout-gym-api/security/advisories/new). If you're not
-sure which repository it belongs to, report it on `workout-gym-api`.
+(https://github.com/gym-ledger/api/security/advisories/new). If you're not
+sure which repository it belongs to, report it on `gym-ledger/api`.
 
 Please include:
 

@@ -1,6 +1,6 @@
 # Deploys to the VPS when main is pushed. The same file is in all three repos;
 # which repo gets deployed is fixed on the server by the SSH key each repo
-# holds (see deployment/ci/setup-server.sh in workout-gym-api).
+# holds (see deployment/ci/setup-server.sh in gym-ledger/api).
 #
 # Needs, in this repo's settings:
 #   Variables (Secrets and variables > Actions > Variables):
@@ -30,7 +30,7 @@ jobs:
     # anyone, so they aren't what decides this. Forks never deploy.
     if: >-
       vars.DEPLOY_ENABLED == 'true' &&
-      github.repository_owner == 'itsmohitchahal' &&
+      github.repository_owner == 'gym-ledger' &&
       github.actor == 'itsmohitchahal' &&
       github.triggering_actor == 'itsmohitchahal'
     runs-on: ubuntu-24.04

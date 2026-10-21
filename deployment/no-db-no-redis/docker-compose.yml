@@ -1,9 +1,12 @@
+# Fixed, so the project (and its volumes) don't change with the folder name.
+name: gym-ledger-api
+
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: workout-gym-api
+    container_name: gym-ledger-api
     restart: unless-stopped
     env_file:
       - .env

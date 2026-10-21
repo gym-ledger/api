@@ -24,8 +24,8 @@ These steps are done **once** when you first set up the server.
 **1. Clone the repository**
 
 ```bash
-git clone <your-repo-url> workout-gym-api
-cd workout-gym-api
+git clone https://github.com/gym-ledger/api.git api
+cd api
 ```
 
 **2. Create `.env` from the production template**

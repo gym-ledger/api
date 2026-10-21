@@ -1,4 +1,4 @@
-# workout-gym-api
+# gym-ledger/api
 
 REST API for a workout and gym management application. Handles user authentication, exercise tracking, workout programs, and body weight progression.
 
@@ -17,18 +17,18 @@ REST API for a workout and gym management application. Handles user authenticati
 
 ## Run the whole stack
 
-One command starts PostgreSQL, Redis, this API, the [user app](../gym-app-nextjs) and the [admin panel](../workout-gym-admin-panel) on your machine, with the exercise library already loaded.
+One command starts PostgreSQL, Redis, this API, the [user app](../web) and the [admin panel](../admin) on your machine, with the exercise library already loaded.
 
 **You need:** Docker with Compose v2, and the three repos cloned side by side:
 
 ```
 some-folder/
-├── workout-gym-api/
-├── gym-app-nextjs/
-└── workout-gym-admin-panel/
+├── api/
+├── web/
+└── admin/
 ```
 
-**Start it** from `workout-gym-api/`:
+**Start it** from `api/`:
 
 ```bash
 docker compose -f stack/docker-compose.yml up --build

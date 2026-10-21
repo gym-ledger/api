@@ -4,7 +4,7 @@
 #   docker compose -f stack/docker-compose.yml up --build
 #
 # Expects the three repos cloned side by side:
-#   workout-gym-api/  gym-app-nextjs/  workout-gym-admin-panel/
+#   api/  web/  admin/
 #
 # Everything below is a local-only default (NODE_ENV=development, throwaway
 # secrets, plain http). For a real server use deployment/ instead. See the
@@ -79,7 +79,7 @@ services:
 
   app:
     build:
-      context: ../../gym-app-nextjs
+      context: ../../web
       args:
         # Baked into the browser bundle, so it is the host's address, not "api".
         NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}/api/v1
@@ -92,7 +92,7 @@ services:
 
   admin:
     build:
-      context: ../../workout-gym-admin-panel
+      context: ../../admin
       args:
         NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-4000}/api/v1
     restart: unless-stopped

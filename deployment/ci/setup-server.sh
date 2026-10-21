@@ -5,8 +5,8 @@
 #   bash deployment/ci/setup-server.sh --host <IP or hostname GitHub connects to> \
 #       [--port 22] [--api DIR] [--app DIR] [--admin DIR]
 #
-# The repo folders default to this repo and its siblings gym-app-nextjs and
-# workout-gym-admin-panel. Re-running is safe; it makes new keys, so the
+# The repo folders default to this repo and its siblings web and admin.
+# Re-running is safe; it makes new keys, so the
 # DEPLOY_SSH_KEY secrets in GitHub must then be updated too.
 #
 # What it sets up:
@@ -23,8 +23,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 API_DIR="$(cd "$HERE/../.." && pwd)"
-APP_DIR="$(dirname "$API_DIR")/gym-app-nextjs"
-ADMIN_DIR="$(dirname "$API_DIR")/workout-gym-admin-panel"
+APP_DIR="$(dirname "$API_DIR")/web"
+ADMIN_DIR="$(dirname "$API_DIR")/admin"
 HOST=""
 PORT=22
 DEPLOY_USER=deploy
@@ -44,7 +44,7 @@ done
 
 TARGETS=(api app admin)
 declare -A DIRS=([api]="$API_DIR" [app]="$APP_DIR" [admin]="$ADMIN_DIR")
-declare -A REPOS=([api]=workout-gym-api [app]=gym-app-nextjs [admin]=workout-gym-admin-panel)
+declare -A REPOS=([api]=gym-ledger/api [app]=gym-ledger/web [admin]=gym-ledger/admin)
 
 echo "==> Repo folders"
 for t in "${TARGETS[@]}"; do
@@ -149,7 +149,7 @@ Deploys will fail at 'git fetch' until it can. Most likely your manual deploys
 used your own SSH key forwarded from your computer. Fix: add a read-only
 deploy key to each of those repos (GitHub > repo > Settings > Deploy keys),
 or, once the repos are public, switch the remote to https:
-  git -C <folder> remote set-url origin https://github.com/<you>/<repo>.git
+  git -C <folder> remote set-url origin https://github.com/gym-ledger/<repo>.git
 Then re-run this script to check (it makes new keys, so update DEPLOY_SSH_KEY).
 EOF
 fi

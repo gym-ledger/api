@@ -51,7 +51,7 @@ bash deploy.sh
 This will:
 - Pull latest code from the current branch
 - Copy `deployment/db/docker-compose.yml` and `Dockerfile` to the project root
-- Build the API image and start all three containers (`postgres16`, `redis7`, `workout-gym-api`)
+- Build the API image and start all three containers (`postgres16`, `redis7`, `gym-ledger-api`)
 
 On first start the container entrypoint automatically runs database migrations and seeds the default admin user (`DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD` from `.env`). Both steps are idempotent and are skipped on subsequent restarts if already applied. In production the seed refuses to run (and the container stops) unless `DEFAULT_ADMIN_EMAIL` is your own address and `DEFAULT_ADMIN_PASSWORD` is at least 12 characters; `generate-secrets.sh` generates the password.
 
@@ -75,7 +75,7 @@ docker compose ps
 View API logs:
 
 ```bash
-docker logs -f workout-gym-api
+docker logs -f gym-ledger-api
 ```
 
 ---
@@ -85,7 +85,7 @@ docker logs -f workout-gym-api
 **API exits immediately on startup**
 The `env` config validator (`src/config/env.ts`) calls `process.exit(1)` if any required variable is missing or malformed. Check logs:
 ```bash
-docker logs workout-gym-api
+docker logs gym-ledger-api
 ```
 
 **Database connection refused**

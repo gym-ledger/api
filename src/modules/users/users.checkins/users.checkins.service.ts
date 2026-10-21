@@ -327,7 +327,7 @@ Output:
  * are the most personal numbers. Body weight goes as changes and trends only.
  * No name, email, phone, user id or IP is ever in the request — the provider
  * sees the API server, not the user. Keep in sync with the AI section of the
- * privacy policy (gym-app-nextjs, /privacy).
+ * privacy policy (gym-ledger/web, /privacy).
  */
 export const toModelInput = (stats: WeeklyCheckinStats) => ({
     weight_units: stats.weight_units,

@@ -744,7 +744,7 @@ export interface PersonalRecordRow {
 /**
  * The user's current personal record (best estimated 1RM — Epley formula)
  * for every exercise they've logged, newest-achieved first. See
- * workout-gym-api/algorithms/personal-records.md for the full model.
+ * algorithms/personal-records.md for the full model.
  */
 export const fetchRecentPRsRepository = async (
     userId: string,

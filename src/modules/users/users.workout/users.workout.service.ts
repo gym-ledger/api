@@ -1677,7 +1677,7 @@ export const getWorkoutConsistencyService = async (userId?: string) => {
 
 /**
  * Tonnage for the current calendar week: Σ (weight + tool_weight) × reps
- * across non-warmup sets. See workout-gym-api/algorithms/weekly-volume.md
+ * across non-warmup sets. See algorithms/weekly-volume.md
  * for the full formula and its unit-handling caveat.
  */
 export const getWeeklyVolumeService = async (userId?: string) => {
@@ -1695,7 +1695,7 @@ export const getWeeklyVolumeService = async (userId?: string) => {
 
 /**
  * The user's current PR for every exercise they've logged, most-recently-set
- * first. See workout-gym-api/algorithms/personal-records.md.
+ * first. See algorithms/personal-records.md.
  */
 export const getRecentPRsService = async (data: {
     userId?: string,

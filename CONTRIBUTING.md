@@ -1,9 +1,9 @@
 # Contributing
 
 Thanks for helping out. This project is split across three repositories:
-[`workout-gym-api`](https://github.com/itsmohitchahal/workout-gym-api) (Express + Postgres API),
-[`gym-app-nextjs`](https://github.com/itsmohitchahal/gym-app-nextjs) (user web app / PWA) and
-[`workout-gym-admin-panel`](https://github.com/itsmohitchahal/workout-gym-admin-panel) (admin panel).
+[`gym-ledger/api`](https://github.com/gym-ledger/api) (Express + Postgres API),
+[`gym-ledger/web`](https://github.com/gym-ledger/web) (user web app / PWA) and
+[`gym-ledger/admin`](https://github.com/gym-ledger/admin) (admin panel).
 
 ## Before you start
 
@@ -16,7 +16,7 @@ Thanks for helping out. This project is split across three repositories:
 
 The quickest way to run everything (Postgres, Redis, the API and both front-ends) is the stack in the
 API repository. Clone all three repositories side by side, then follow
-[Run the whole stack](https://github.com/itsmohitchahal/workout-gym-api#run-the-whole-stack).
+[Run the whole stack](https://github.com/gym-ledger/api#run-the-whole-stack).
 
 To work on this repository alone:
 
