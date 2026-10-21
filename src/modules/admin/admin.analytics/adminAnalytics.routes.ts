@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
+import { aiLimiter } from "../../../middleware/rateLimiters.js";
 import {
     getAiDailyForAdmin,
     getAiSummaryForAdmin,
@@ -22,7 +23,7 @@ adminAnalyticsRouter.get("/overview", asyncHandler(getOverviewForAdmin));
 adminAnalyticsRouter.get("/ai/summary", asyncHandler(getAiSummaryForAdmin));
 adminAnalyticsRouter.get("/ai/daily", asyncHandler(getAiDailyForAdmin));
 adminAnalyticsRouter.get("/ai/checkins", asyncHandler(getCheckinOutcomesForAdmin));
-adminAnalyticsRouter.post("/checkins/:id/retry", asyncHandler(retryCheckinForAdmin));
+adminAnalyticsRouter.post("/checkins/:id/retry", aiLimiter, asyncHandler(retryCheckinForAdmin));
 
 adminAnalyticsRouter.get("/users/list", asyncHandler(listUsersForAdmin));
 adminAnalyticsRouter.get("/users/view/:id", asyncHandler(viewUserForAdmin));

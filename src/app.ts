@@ -7,6 +7,7 @@ import { env } from "./config/env.js";
 import { API_PREFIX } from "./config/constants.js";
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { apiLimiter } from "./middleware/rateLimiters.js";
 import router from "./modules/index/index.routes.js";
 
 // import adminRoutes from "./src/modules/admin/admin.routes";
@@ -36,7 +37,7 @@ app.get("/health", (_, res) => {
     res.json({ ok: true });
 });
 
-app.use(API_PREFIX, router);
+app.use(API_PREFIX, apiLimiter, router);
 
 // app.use("/api/v1/admin", adminRoutes);
 // app.use("/api/v1/app", appRoutes);

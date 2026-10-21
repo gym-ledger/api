@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { uploadLimiter } from "../../../middleware/rateLimiters.js";
 import { asyncHandler } from "../../../shared/errors/utils/asyncHandler.js";
 
 import {
@@ -55,16 +56,16 @@ adminCrudRouter.post("/muscles/create", asyncHandler(createMuscleForAdmin));
 adminCrudRouter.put("/muscles/update/:id", asyncHandler(updateMuscleForAdmin));
 adminCrudRouter.delete("/muscles/delete/:id", asyncHandler(deleteMuscleForAdmin));
 adminCrudRouter.get("/muscles/dropdown", asyncHandler(getMusclesDropdownForAdmin));
-adminCrudRouter.post("/muscles/import", upload.single("file"), asyncHandler(importMusclesForAdmin));
+adminCrudRouter.post("/muscles/import", uploadLimiter, upload.single("file"), asyncHandler(importMusclesForAdmin));
 adminCrudRouter.get("/muscles/export", asyncHandler(exportMusclesForAdmin));
 
 // exercises
 adminCrudRouter.get("/exercises/list", asyncHandler(listExercisesForAdmin));
 adminCrudRouter.get("/exercises/view/:id", asyncHandler(viewExerciseForAdmin));
-adminCrudRouter.post("/exercises/create", upload.single("image"), asyncHandler(createExerciseForAdmin));
-adminCrudRouter.put("/exercises/update/:id", upload.single("image"), asyncHandler(updateExerciseForAdmin));
+adminCrudRouter.post("/exercises/create", uploadLimiter, upload.single("image"), asyncHandler(createExerciseForAdmin));
+adminCrudRouter.put("/exercises/update/:id", uploadLimiter, upload.single("image"), asyncHandler(updateExerciseForAdmin));
 adminCrudRouter.delete("/exercises/delete/:id", asyncHandler(deleteExerciseForAdmin));
-adminCrudRouter.post("/exercises/import", upload.single("file"), asyncHandler(importExercisesForAdmin));
+adminCrudRouter.post("/exercises/import", uploadLimiter, upload.single("file"), asyncHandler(importExercisesForAdmin));
 adminCrudRouter.get("/exercises/export", asyncHandler(exportExercisesForAdmin));
 
 // progression rules

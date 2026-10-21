@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { uploadLimiter } from "../../../middleware/rateLimiters.js";
 import { verifyUserToken } from '../../../middleware/authenticationMiddleware.js';
 import {
     getUserWeightViews,
@@ -30,6 +31,6 @@ usersWeightRouter.post("/entry", verifyUserToken, asyncHandler(createUserWeightE
 usersWeightRouter.put("/entry/:id", verifyUserToken, asyncHandler(updateUserWeightEntry));
 usersWeightRouter.delete("/entry/:id", verifyUserToken, asyncHandler(deleteUserWeightEntry));
 usersWeightRouter.get("/entries", verifyUserToken, asyncHandler(getUserWeightEntries));
-usersWeightRouter.post("/entries/import", verifyUserToken, upload.single("file"), asyncHandler(importUserWeightEntries));
+usersWeightRouter.post("/entries/import", verifyUserToken, uploadLimiter, upload.single("file"), asyncHandler(importUserWeightEntries));
 
 export default usersWeightRouter;

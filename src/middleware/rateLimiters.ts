@@ -1,12 +1,30 @@
 import { rateLimit } from "express-rate-limit";
 
-// In-memory store: limits are per API process. Swap in a Redis store
-// (rate-limit-redis) if the API is ever scaled to more than one instance.
-const createLimiter = (windowMs: number, limit: number, message: string) => rateLimit({
+import { RedisRateLimitStore } from "../infrastructure/redis/rateLimitStore.js";
+
+// Counters live in Redis, so limits hold across API instances and restarts.
+// Limits are per client IP — set TRUST_PROXY_HOPS when behind a proxy, or
+// every client shares the proxy's bucket.
+const createLimiter = ({
+    name,
+    windowMs,
+    limit,
+    message,
+    failOpen = false,
+}: {
+    name: string;
+    windowMs: number;
+    limit: number;
+    message: string;
+    /** Let requests through if Redis is down. Off for anything guarding a secret. */
+    failOpen?: boolean;
+}) => rateLimit({
     windowMs,
     limit,
     standardHeaders: "draft-7",
     legacyHeaders: false,
+    store: new RedisRateLimitStore(name),
+    passOnStoreError: failOpen,
     handler: (_req, res) => {
         res.status(429).json({
             success: false,
@@ -21,23 +39,67 @@ const createLimiter = (windowMs: number, limit: number, message: string) => rate
 
 const FIFTEEN_MINUTES = 1000 * 60 * 15;
 
+/**
+ * Every API route. Generous: an offline workout syncing its queued sets
+ * sends a burst, and a gym's Wi-Fi puts many users behind one IP.
+ */
+export const apiLimiter = createLimiter({
+    name: "api",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 3000,
+    message: "Too many requests. Please slow down and try again shortly",
+    failOpen: true,
+});
+
 /** Endpoints that deliver an OTP (SMS/email cost + brute-force fuel). */
-export const otpSendLimiter = createLimiter(
-    FIFTEEN_MINUTES,
-    10,
-    "Too many OTP requests. Please try again later",
-);
+export const otpSendLimiter = createLimiter({
+    name: "otp-send",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 10,
+    message: "Too many OTP requests. Please try again later",
+});
+
+/**
+ * CAPTCHA challenges. Issuing one costs the server a key derivation, so it
+ * is capped too; a real user needs one per code they ask for.
+ */
+export const captchaChallengeLimiter = createLimiter({
+    name: "captcha-challenge",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 60,
+    message: "Too many requests. Please try again later",
+});
 
 /** Endpoints that check a secret (OTP, password). */
-export const credentialCheckLimiter = createLimiter(
-    FIFTEEN_MINUTES,
-    20,
-    "Too many attempts. Please try again later",
-);
+export const credentialCheckLimiter = createLimiter({
+    name: "credential",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 20,
+    message: "Too many attempts. Please try again later",
+});
 
 /** Token refresh / logout. */
-export const tokenLimiter = createLimiter(
-    FIFTEEN_MINUTES,
-    100,
-    "Too many requests. Please try again later",
-);
+export const tokenLimiter = createLimiter({
+    name: "token",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 100,
+    message: "Too many requests. Please try again later",
+});
+
+/** File uploads and CSV imports: each one parses a file and writes many rows. */
+export const uploadLimiter = createLimiter({
+    name: "upload",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 30,
+    message: "Too many uploads. Please try again later",
+    failOpen: true,
+});
+
+/** Anything that can start a paid AI (Groq) request. */
+export const aiLimiter = createLimiter({
+    name: "ai",
+    windowMs: FIFTEEN_MINUTES,
+    limit: 30,
+    message: "Too many check-in requests. Please try again later",
+    failOpen: true,
+});
