@@ -117,3 +117,5 @@ The API ships with two deployment modes:
 | `api-only` | API container only — connects to an existing PostgreSQL and Redis on the host |
 
 → [Deployment Guide](deployment/DEPLOY.md)
+
+→ [Backups and the live standby](deployment/BACKUPS.md): nightly encrypted backups to any S3-compatible bucket, and an optional streaming standby on a second server, both switched on with `.env`.

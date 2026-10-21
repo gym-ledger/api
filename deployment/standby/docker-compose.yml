@@ -1,0 +1,33 @@
+# The live standby, on a SECOND server (BACKUPS.md, "Live standby").
+# Needs a private network to the primary (Tailscale/WireGuard) and, on the
+# primary, REPLICATION_ENABLED=true with the same user, password and slot.
+#
+#   cp .env.standby.example .env   # fill it in
+#   docker compose up -d
+name: gym-ledger-standby
+
+services:
+  postgres-standby:
+    image: postgres:16-alpine
+    container_name: gym-ledger-standby
+    restart: unless-stopped
+    # Run through sh: the mounted file need not be executable.
+    entrypoint: ["sh", "/usr/local/bin/standby-entrypoint.sh"]
+    env_file:
+      - .env
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+    # Loopback only, like the primary. Reach it over SSH/VPN to check on it.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - standby_data:/var/lib/postgresql/data
+      - ./standby-entrypoint.sh:/usr/local/bin/standby-entrypoint.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  standby_data:

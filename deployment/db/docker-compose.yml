@@ -62,6 +62,60 @@ services:
     networks:
       - app-network
 
+  # Nightly encrypted backups of every database to S3-compatible storage.
+  # Idles until BACKUP_S3_BUCKET etc. are set in .env (deployment/BACKUPS.md).
+  backup:
+    build:
+      context: ./deployment/backup
+    container_name: gym-ledger-backup
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Optional live standby, primary side (deployment/BACKUPS.md). Runs once per
+  # deploy: sets replication up when REPLICATION_ENABLED=true and removes it
+  # otherwise. Never restarts the postgres container.
+  replication-setup:
+    image: postgres:16
+    restart: "no"
+    entrypoint: ["sh", "/scripts/setup-primary.sh"]
+    env_file:
+      - .env
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/replication/setup-primary.sh:/scripts/setup-primary.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # Lets the standby reach the database on this server's private IP only
+  # (REPLICATION_BIND_IP). Idles when replication is off.
+  replication-proxy:
+    build:
+      context: ./deployment/replication
+      dockerfile: Dockerfile.proxy
+    container_name: gym-ledger-replication-proxy
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env
+
 networks:
   app-network:
     driver: bridge

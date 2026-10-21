@@ -41,6 +41,10 @@ cp .env.production.example .env
 
 ---
 
+## Backups
+
+Set up nightly backups before real users arrive: see [BACKUPS.md](BACKUPS.md). It also covers the optional live standby.
+
 ## Subsequent Deploys
 
 Once the server is set up, all future deploys are a single command from the project root:

@@ -16,3 +16,21 @@ services:
     # via host.docker.internal — use that hostname in DATABASE_URL / REDIS_URL in .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  # Nightly encrypted backups of every database on your Postgres server to
+  # S3-compatible storage. Idles until BACKUP_S3_BUCKET etc. are set in .env
+  # (deployment/BACKUPS.md). Needs a superuser login to that server.
+  backup:
+    build:
+      context: ./deployment/backup
+    container_name: gym-ledger-backup
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGHOST: ${BACKUP_PGHOST:-host.docker.internal}
+      PGPORT: ${BACKUP_PGPORT:-5432}
+      PGUSER: ${BACKUP_PGUSER:-}
+      PGPASSWORD: ${BACKUP_PGPASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

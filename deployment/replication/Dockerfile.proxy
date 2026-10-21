@@ -1,0 +1,8 @@
+# Forwards the standby's replication connection (BACKUPS.md, "Live standby").
+FROM alpine:3.20
+
+RUN apk add --no-cache socat
+
+COPY --chmod=755 proxy.sh /usr/local/bin/proxy.sh
+
+ENTRYPOINT ["/usr/local/bin/proxy.sh"]
