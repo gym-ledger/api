@@ -5,7 +5,6 @@ import { AppError } from "../../../shared/errors/AppError.js";
 import { USER_WEIGHT_ENTRIES_TABLE, UserWeightEntriesInterface } from "../../../db/schemas/users/weight/userWeightEntries.schema.js";
 import { USER_WEIGHT_MOVING_AVERAGES_TABLE, UserWeightMovingAveragesInterface } from "../../../db/schemas/users/weight/userWeightMovingAverages.schema.js";
 import { reCalculateUserWeightMovingAverages, recalculateUserWeightViewSummaryService } from "../../../utils/users/users.weight.utils.js";
-import { importUserWeightEntries } from "./users.weight.controller.js";
 import { parseCsv } from "../../../utils/csv.js";
 import { prettyFloat } from "../../../utils/math.js";
 import { USER_WEIGHT_VIEWS_TABLE, UserWeightViewsInterface } from "../../../db/schemas/users/weight/userWeightViews.schema.js";
@@ -132,8 +131,10 @@ export const getUserWeightInViewService = async ({
         weightMovingAverages = weightMovingAverages.map((average: Partial<UserWeightMovingAveragesInterface>) => {
             return {
                 ...average,
-                three_day_moving_average: prettyFloat(average.three_day_moving_average || 0),
-                seven_day_moving_average: prettyFloat(average.seven_day_moving_average || 0),
+                // null = not enough weigh-ins for that average yet. Sending 0
+                // instead made charts plot a 0 kg trend.
+                three_day_moving_average: average.three_day_moving_average == null ? null : prettyFloat(average.three_day_moving_average),
+                seven_day_moving_average: average.seven_day_moving_average == null ? null : prettyFloat(average.seven_day_moving_average),
             }
         });
 

@@ -5,9 +5,9 @@ export interface UserWeightMovingAveragesInterface {
 
     user_id: string;
 
-    three_day_moving_average: number;
+    three_day_moving_average: number | null;
 
-    seven_day_moving_average: number;
+    seven_day_moving_average: number | null;
 
     date: Date;
 
