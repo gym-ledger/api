@@ -1,6 +1,7 @@
 import { logger } from "../../config/logger.js";
 import { pg } from "../postgres/index.js";
 import { redis } from "../redis/index.js";
+import { aiRequestDuration, aiRequests } from "../metrics/index.js";
 
 export const AI_REQUESTS_TABLE = "ai_requests";
 
@@ -45,6 +46,10 @@ const purgeExpiredOncePerDay = async () => {
  * failed log write must not break the user's request.
  */
 export const logAiRequest = (entry: AiRequestLogEntry): void => {
+    aiRequests.inc({ feature: entry.feature, status: entry.status });
+    if (entry.latencyMs !== null) {
+        aiRequestDuration.observe({ feature: entry.feature }, entry.latencyMs / 1000);
+    }
     pg.query(
         `INSERT INTO ${AI_REQUESTS_TABLE}
             (user_id, feature, model, status, prompt_tokens, completion_tokens, latency_ms)

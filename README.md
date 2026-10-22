@@ -79,6 +79,8 @@ The same code that logs you in creates your account the first time.
 | `RESEND_API_KEY`, `EMAIL_FROM` | unset | Send real login emails through [Resend](https://resend.com) |
 | `GROQ_API_KEY` | unset | Write AI notes in weekly check-ins ([Groq](https://console.groq.com)) |
 
+**Monitoring.** Add `--profile monitoring` to `up` to also start Prometheus (http://localhost:9090) and Grafana (http://localhost:3002, `admin` / `local-grafana-password`). See [Monitoring](deployment/monitoring/MONITORING.md).
+
 **Stop it** with `Ctrl+C`, or `docker compose -f stack/docker-compose.yml down`. Add `-v` to also delete the database.
 
 This setup is for trying the project and for development only: it runs with `NODE_ENV=development`, fixed secrets and plain http. To run it on a server, use the deployment guide below.
@@ -106,6 +108,7 @@ The API reads its settings from environment variables and refuses to start when 
 | AI check-ins | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_DAILY_REQUEST_LIMIT` | Optional |
 | Exercise images | `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_PUBLIC_URL`, `S3_FORCE_PATH_STYLE` | Optional; any S3-compatible storage (Cloudflare R2, AWS S3, MinIO, …) |
 | First admin | `DEFAULT_ADMIN_EMAIL`, `DEFAULT_ADMIN_PASSWORD` | Used only when no admin exists |
+| Monitoring | `METRICS_*`, `REQUEST_LOG_*`, `PROMETHEUS_URL`, `GRAFANA_*`, `ALERT_EMAIL_TO` | Optional; see [Monitoring](deployment/monitoring/MONITORING.md) |
 
 ## Deployment
 
@@ -117,5 +120,7 @@ The API ships with two deployment modes:
 | `api-only` | API container only — connects to an existing PostgreSQL and Redis on the host |
 
 → [Deployment Guide](deployment/DEPLOY.md)
+
+→ [Monitoring](deployment/monitoring/MONITORING.md): Prometheus + Grafana with email alerts, and the admin panel's API page (latency percentiles, errors by type, slow requests), switched on with `COMPOSE_PROFILES=monitoring`.
 
 → [Backups and the live standby](deployment/BACKUPS.md): nightly encrypted backups to any S3-compatible bucket, and an optional streaming standby on a second server, both switched on with `.env`.

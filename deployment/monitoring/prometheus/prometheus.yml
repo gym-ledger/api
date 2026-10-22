@@ -1,0 +1,16 @@
+# Scrapes the API's metrics port (METRICS_PORT, default 9464) over the Docker
+# network. That port is never published on the host. See
+# deployment/monitoring/MONITORING.md.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: api
+    static_configs:
+      - targets: ["api:9464"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

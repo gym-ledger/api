@@ -38,6 +38,9 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
         // Expired / malformed / badly-signed tokens are a 401, not a server error —
         // clients key their refresh-and-retry logic off the 401.
         if (error instanceof joseErrors.JOSEError) {
+            // Expired tokens are the normal refresh path; metrics keep them
+            // apart from real auth failures.
+            if (error instanceof joseErrors.JWTExpired) res.locals.errorType = "TOKEN_EXPIRED";
             return res.status(401).json({ message: "Unauthorized" });
         }
         next(error);
@@ -74,6 +77,9 @@ export const verifyAdminToken = async (req: Request, res: Response, next: NextFu
         // Expired / malformed / badly-signed tokens are a 401, not a server error —
         // clients key their refresh-and-retry logic off the 401.
         if (error instanceof joseErrors.JOSEError) {
+            // Expired tokens are the normal refresh path; metrics keep them
+            // apart from real auth failures.
+            if (error instanceof joseErrors.JWTExpired) res.locals.errorType = "TOKEN_EXPIRED";
             return res.status(401).json({ message: "Unauthorized" });
         }
         next(error);

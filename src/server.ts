@@ -5,6 +5,8 @@ import { logger } from "./config/logger.js";
 import { connectPostgres } from "./infrastructure/postgres/index.js";
 import { connectRedis } from "./infrastructure/redis/index.js";
 import { startBackgroundJobs } from "./jobs/index.js";
+import { startMetricsServer, stopMetricsServer } from "./infrastructure/metrics/index.js";
+import { flushRequestIssues } from "./infrastructure/metrics/requestIssueLog.js";
 import { closeAllNotificationStreams, startNotificationStreams } from "./modules/users/users.notifications/users.notifications.stream.js";
 
 async function bootstrap() {
@@ -14,6 +16,7 @@ async function bootstrap() {
         await startNotificationStreams();
 
         startBackgroundJobs();
+        startMetricsServer();
 
         const server = app.listen(env.PORT, () => {
             // console.log(`Server running on ${env.PORT}`);
@@ -27,6 +30,9 @@ async function bootstrap() {
             server.close(async () => {
                 // console.log("HTTP server closed");
                 logger.info("HTTP server closed");
+
+                stopMetricsServer();
+                await flushRequestIssues();
 
                 process.exit(0);
             });
