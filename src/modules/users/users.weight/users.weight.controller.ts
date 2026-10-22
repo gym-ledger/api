@@ -1,6 +1,5 @@
 import { NextFunction, Request, Response } from "express";
 import { responseSend } from "../../../helpers/response-send.js";
-import { AppError } from "../../../shared/errors/AppError.js";
 import {
     getUserWeightInViewService,
     createUserWeightEntryService,

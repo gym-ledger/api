@@ -381,7 +381,7 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
                     pendingData.push({ id: savedData.id, parent_muscle_id: null, children_muscles: muscle.children_muscles });
                 }
             }
-        } catch (error: any) {
+        } catch (error) {
             errors.push({
                 row: muscle.id ? muscles.indexOf(muscle) + 1 : muscles.length + 1,
                 message: error instanceof AppError ? error.message : "Unknown error",
@@ -427,7 +427,7 @@ export const importMusclesForAdminService = async (data: { file: Express.Multer.
                 });
             }
 
-        } catch (error: any) {
+        } catch (error) {
             errors.push({
                 row: pendingData.indexOf(muscle) + 1,
                 message: error instanceof AppError ? error.message : "Unknown error",

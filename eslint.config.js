@@ -14,6 +14,8 @@ export default tseslint.config(
         rules: {
             // Prefixing with _ marks an argument as deliberately unused (Express handlers, etc.).
             "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" }],
+            // `let { a, b } = …` where only b is reassigned stays a let.
+            "prefer-const": ["error", { destructuring: "all" }],
         },
     },
 );

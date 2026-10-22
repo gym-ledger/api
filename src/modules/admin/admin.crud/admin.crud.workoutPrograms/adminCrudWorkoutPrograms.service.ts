@@ -11,7 +11,7 @@ import slugify from "slugify";
 
 
 export const listWorkoutProgramsForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
-    const { page = 1, limit = 10, search = "", createdBy = "admin_user" } = data;
+    const { page = 1, limit = 10, search = "" } = data;
     const workoutPrograms = await fetchPaginatedResultsFromTable({
         table: WORKOUT_PROGRAMS_TABLE,
         where: [
@@ -749,5 +749,6 @@ export const createWorkoutProgramVersionForAdminService = async (data: {
     }
 }
 
-export const deleteWorkoutProgramForAdminService = async (data: { id: string }) => {
+// Not implemented yet: deleting a program is a no-op.
+export const deleteWorkoutProgramForAdminService = async (_data: { id: string }) => {
 }

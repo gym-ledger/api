@@ -1,6 +1,5 @@
 import { ExercisesInterface } from "../../../../db/schemas/exercises/exercises.schema.js";
-import { EXERCISE_MUSCLES_TABLE, ExerciseMusclesInterface } from "../../../../db/schemas/muscles/exerciseMuscles.schema.js";
-import { MUSCLES_TABLE, MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
+import { MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
 import { pg } from "../../../../infrastructure/postgres/index.js";
 import { AppError } from "../../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../../utils/validation.js";

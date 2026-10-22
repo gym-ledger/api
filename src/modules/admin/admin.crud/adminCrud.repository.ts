@@ -53,7 +53,7 @@ export const fetchWorkoutProgramWithVersionsService = async (id: string, version
             ORDER BY created_at ASC`,
             [days.map((d) => d.id)],
         )
-        : { rows: [] as any[] };
+        : { rows: [] };
     const sessions = sessionsResult.rows;
 
     const exercisesResult = sessions.length > 0
@@ -65,17 +65,17 @@ export const fetchWorkoutProgramWithVersionsService = async (id: string, version
             ORDER BY wpe.exercise_order ASC`,
             [sessions.map((s) => s.id)],
         )
-        : { rows: [] as any[] };
+        : { rows: [] };
     const exercises = exercisesResult.rows;
 
-    const exercisesBySession = new Map<string, any[]>();
+    const exercisesBySession = new Map<string, Record<string, unknown>[]>();
     for (const exercise of exercises) {
         const list = exercisesBySession.get(exercise.workout_program_day_session_id) ?? [];
         list.push(exercise);
         exercisesBySession.set(exercise.workout_program_day_session_id, list);
     }
 
-    const sessionsByDay = new Map<string, any[]>();
+    const sessionsByDay = new Map<string, Record<string, unknown>[]>();
     for (const session of sessions) {
         const list = sessionsByDay.get(session.workout_program_day_id) ?? [];
         list.push({

@@ -128,7 +128,7 @@ export const fetchPopulatedMusclesForExportRepository = async (data: { search?: 
     const whereParams: QueryCondition[] = [
         { field: "name", operator: "FTS", value: search }
     ];
-    let {
+    const {
         values,
         whereClause,
     } = buildWhereClause(whereParams);

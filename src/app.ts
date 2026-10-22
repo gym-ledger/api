@@ -32,7 +32,7 @@ app.use(compression());
 app.use(express.json());
 
 
-app.use(httpLogger as any);
+app.use(httpLogger as unknown as express.RequestHandler);
 
 // 200 when Postgres and Redis both answer, 503 otherwise. Used by the
 // Docker health check and the deploy workflow's "is it live" step.

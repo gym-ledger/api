@@ -27,7 +27,13 @@ const RESET_TOKEN_TTL_MS = 1000 * 60 * 10;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 
-const validateIdentity = (method: string, phoneNumber: any, email: any) => {
+/** A phone number as stored: country code (e.g. "+91") and national number. */
+type PhoneNumber = { code?: string | null, number?: string | null };
+
+/** How a user identifies themselves to sign in: an email, or a phone number. */
+type IdentityInput = { method: string, phoneNumber?: PhoneNumber, email?: string | null };
+
+const validateIdentity = (method: string, phoneNumber: PhoneNumber | undefined, email: string | null | undefined) => {
     if (method === "phone") {
         if (!phoneNumber?.code) {
             throw new AppError("Invalid phone number code", 400);
@@ -44,7 +50,7 @@ const validateIdentity = (method: string, phoneNumber: any, email: any) => {
     }
 }
 
-const getOtpObj = async (method: string, phoneNumber: any, email: any, purpose: OtpPurpose) => {
+const getOtpObj = async (method: string, phoneNumber: PhoneNumber | undefined, email: string | null | undefined, purpose: OtpPurpose) => {
     validateIdentity(method, phoneNumber, email);
     const identityWhere = method === "phone"
         ? [
@@ -65,7 +71,7 @@ const getOtpObj = async (method: string, phoneNumber: any, email: any, purpose: 
     }) as OtpAuthInterface | null;
 }
 
-const findUserByIdentity = async (method: string, phoneNumber: any, email: any) => {
+const findUserByIdentity = async (method: string, phoneNumber: PhoneNumber | undefined, email: string | null | undefined) => {
     validateIdentity(method, phoneNumber, email);
     const where = method === "phone"
         ? [
@@ -117,8 +123,8 @@ export const getAuthConfigService = () => ({
  */
 const issueOtp = async ({ method, phoneNumber, email, purpose, silentThrottle = false }: {
     method: string,
-    phoneNumber: any,
-    email: any,
+    phoneNumber: PhoneNumber | undefined,
+    email: string | null | undefined,
     purpose: OtpPurpose,
     silentThrottle?: boolean,
 }) => {
@@ -200,8 +206,8 @@ const issueOtp = async ({ method, phoneNumber, email, purpose, silentThrottle = 
  */
 const deliverOtp = async ({ method, phoneNumber, email, otp, purpose, swallowFailure }: {
     method: string,
-    phoneNumber: any,
-    email: any,
+    phoneNumber: PhoneNumber | undefined,
+    email: string | null | undefined,
     otp: string,
     purpose: OtpPurpose,
     swallowFailure: boolean,
@@ -214,13 +220,14 @@ const deliverOtp = async ({ method, phoneNumber, email, otp, purpose, swallowFai
         ? "otp-reset-password"
         : purpose === "delete_account" ? "otp-delete-account" : "otp-login";
     try {
+        // validateIdentity (via getOtpObj in issueOtp) has checked these are set.
         if (method === "phone") {
-            await sendOtpWhatsApp({ phoneNumber, otp });
+            await sendOtpWhatsApp({ phoneNumber: phoneNumber as { code: string, number: string }, otp });
         } else if (method === "email") {
             if (!isEmailDeliveryConfigured() && env.NODE_ENV !== "production") {
                 return;
             }
-            await sendOtpEmail({ email, otp, template, ttlMinutes: OTP_TTL_MS / 60_000 });
+            await sendOtpEmail({ email: email as string, otp, template, ttlMinutes: OTP_TTL_MS / 60_000 });
         }
     } catch (error) {
         if (!(error instanceof OtpDeliveryError)) {
@@ -288,12 +295,12 @@ const createUserSession = async (userObj: UsersInterface) => {
     return { user: toPublicUser(userObj), accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt };
 }
 
-export const sendOtpForLoginService = async (data: any) => {
+export const sendOtpForLoginService = async (data: IdentityInput) => {
     const { method, phoneNumber, email } = data ?? {};
     await issueOtp({ method, phoneNumber, email, purpose: "login" });
 }
 
-export const verifyOtpForLoginService = async (data: any) => {
+export const verifyOtpForLoginService = async (data: IdentityInput & { otp: string }) => {
     const { method, phoneNumber, email, otp } = data ?? {};
     const otpObj = await getOtpObj(method, phoneNumber, email, "login");
     await assertOtpValid(otpObj, otp, { allowMasterOtp: true });
@@ -317,7 +324,7 @@ export const verifyOtpForLoginService = async (data: any) => {
     return await createUserSession(userObj);
 }
 
-export const loginWithPasswordService = async (data: any) => {
+export const loginWithPasswordService = async (data: IdentityInput & { password: string }) => {
     const { method, phoneNumber, email, password } = data ?? {};
     if (!password || typeof password !== "string") {
         throw new AppError("Password is required", 400);
@@ -337,7 +344,7 @@ export const loginWithPasswordService = async (data: any) => {
  * account exists for this email/phone, so it can't be used to enumerate users;
  * the OTP is only generated and delivered when the account exists.
  */
-export const sendOtpForPasswordResetService = async (data: any) => {
+export const sendOtpForPasswordResetService = async (data: IdentityInput) => {
     const { method, phoneNumber, email } = data ?? {};
     // Checked before the account lookup so the reply can't depend on whether it exists.
     assertOtpMethodAvailable(method);
@@ -353,7 +360,7 @@ export const sendOtpForPasswordResetService = async (data: any) => {
  * single-use reset token. The OTP row is kept and marked verified so the
  * token (stored hashed) can be checked in step 3.
  */
-export const verifyOtpForPasswordResetService = async (data: any) => {
+export const verifyOtpForPasswordResetService = async (data: IdentityInput & { otp: string }) => {
     const { method, phoneNumber, email, otp } = data ?? {};
     const otpObj = await getOtpObj(method, phoneNumber, email, "reset_password");
     await assertOtpValid(otpObj, otp, { allowMasterOtp: true });
@@ -377,7 +384,7 @@ export const verifyOtpForPasswordResetService = async (data: any) => {
  * Step 3 of forgot-password. Sets the new password, burns the reset token,
  * and logs the user out of every existing session.
  */
-export const resetPasswordService = async (data: any) => {
+export const resetPasswordService = async (data: { resetToken: string, newPassword: string }) => {
     const { resetToken, newPassword } = data ?? {};
     if (!resetToken || typeof resetToken !== "string") {
         throw new AppError("Reset token is required", 400);

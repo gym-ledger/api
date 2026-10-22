@@ -1,8 +1,8 @@
 import message, { IMessageObject } from "./msgs.js";
 import { Response } from 'express';
 
-export const responseSend = (res: Response, code: number, msg: string, data?: any) => {
-    const result: Record<string, any> = {};
+export const responseSend = (res: Response, code: number, msg: string, data?: unknown) => {
+    const result: Record<string, unknown> = {};
     const n_code = code ? code : 455 as number;
     const m = message[n_code as unknown as keyof typeof message] as IMessageObject;
 

@@ -4,7 +4,7 @@ export interface ProgressionRulesInterface {
     id: string;
     name: string;
     type: string;
-    config: any;
+    config: Record<string, unknown>;
     deleted_at: Date | null;
     created_at: Date;
     updated_at: Date;

@@ -1,15 +1,11 @@
 import { AppError } from "../../../../shared/errors/AppError.js";
-import { addOneInTable, deleteOneFromTable, fetchManyFromTable, fetchOneFromTable, fetchPaginatedResultsFromTable, updateOneInTable } from "../../../index/index.repository.js";
+import { addOneInTable, deleteOneFromTable, fetchOneFromTable, fetchPaginatedResultsFromTable, updateOneInTable } from "../../../index/index.repository.js";
 import { isValidUUID } from "../../../../utils/validation.js";
 import { PROGRESSION_RULES_TABLE, ProgressionRulesInterface } from "../../../../db/schemas/workoutPrograms/progressionRules.schema.js";
 
 // exercises
 export const listProgressionRulesForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
-    const { page = 1, limit = 10, search = "", createdBy = "admin_user" } = data;
-    const filter = {
-        // search: search,
-        // createdBy: createdBy,
-    };
+    const { page = 1, limit = 10 } = data;
     const progressionRules = await fetchPaginatedResultsFromTable({
         table: PROGRESSION_RULES_TABLE,
         where: [],
@@ -53,7 +49,7 @@ export const viewProgressionRuleForAdminService = async (data: { id: string }) =
     return progressionRule;
 }
 
-export const createProgressionRuleForAdminService = async (data: { name: string, type: string, config: any, added_by_admin_user_id: string }) => {
+export const createProgressionRuleForAdminService = async (data: { name: string, type: string, config: Record<string, unknown>, added_by_admin_user_id: string }) => {
     const { name, type, config, added_by_admin_user_id } = data;
 
     if (!name) {
@@ -84,8 +80,8 @@ export const createProgressionRuleForAdminService = async (data: { name: string,
     return progressionRule;
 }
 
-export const updateProgressionRuleForAdminService = async (data: { id: string, name: string, type: string, config: any, added_by_admin_user_id: string }) => {
-    const { id, name, type, config, added_by_admin_user_id } = data;
+export const updateProgressionRuleForAdminService = async (data: { id: string, name: string, type: string, config: Record<string, unknown>, added_by_admin_user_id?: string }) => {
+    const { id, name, type, config } = data;
 
     if (!id) {
         throw new AppError("Progression rule id is required", 400);

@@ -1,17 +1,10 @@
 import { IMPORT_CONCURRENCY, mapWithConcurrency } from "../../../../utils/concurrency.js";
 import { AppError } from "../../../../shared/errors/AppError.js";
 import { addOneInTable, deleteManyInTable, deleteOneFromTable, fetchManyFromTable, fetchOneFromTable, fetchPaginatedResultsFromTable, updateOneInTable } from "../../../index/index.repository.js";
-import { ADMIN_USER_TABLE, AdminUserInterface } from "../../../../db/schemas/admin/admin.schema.js";
-import { generateAdminAccessToken, generateRefreshToken, hashPassword, verifyPassword } from "../../../../utils/authentication.js";
-import { hashToken } from "../../../../utils/crypto.js";
-import { WORKOUT_PROGRAMS_TABLE, WorkoutProgramsInterface } from "../../../../db/schemas/workoutPrograms/workoutPrograms.schema.js";
-import { fetchWorkoutProgramWithVersionsService } from "../adminCrud.repository.js";
 import { isValidUUID } from "../../../../utils/validation.js";
 import { EXERCISES_TABLE, ExercisesInterface } from "../../../../db/schemas/exercises/exercises.schema.js";
 import slugify from "slugify";
-import { ProgramDaysInterface } from "../../../../db/schemas/workoutPrograms/programDays.schema.js";
 import { parseCsv } from "../../../../utils/csv.js";
-import { FetchPaginatedResultsFromTableParams } from "../../../index/index.repository.js";
 import { EXERCISE_MUSCLES_TABLE, ExerciseMusclesInterface } from "../../../../db/schemas/muscles/exerciseMuscles.schema.js";
 import { fetchExerciseWithMusclesByIdRepository, fetchExercisesForExportRepository } from "./adminCrudExercises.repository.js";
 import { MUSCLES_TABLE, MusclesInterface } from "../../../../db/schemas/muscles/muscles.schema.js";
@@ -51,11 +44,7 @@ const parseAndValidateExerciseMuscles = (exerciseMuscles: string): { muscle_id: 
 
 // exercises
 export const listExercisesForAdminService = async (data: { page?: number, limit?: number, search?: string, createdBy?: string }) => {
-    const { page = 1, limit = 10, search = "", createdBy = "admin_user" } = data;
-    const filter = {
-        // search: search,
-        // createdBy: createdBy,
-    };
+    const { page = 1, limit = 10, search = "" } = data;
     const exercises = await fetchPaginatedResultsFromTable({
         table: "exercises",
 
@@ -184,7 +173,7 @@ export const updateExerciseForAdminService = async (data: {
     /** "true" removes the current image when no new one is uploaded. */
     remove_image?: string,
 }) => {
-    const { id, name, description, added_by_admin_user_id, visibility = "public", exerciseMuscles, file, remove_image } = data;
+    const { id, name, description, visibility = "public", exerciseMuscles, file, remove_image } = data;
 
     if (!id) {
         throw new AppError("Exercise id is required", 400);

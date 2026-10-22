@@ -11,9 +11,9 @@ export interface UserWeightViewsInterface {
 
     to_date: Date | null;
 
-    weight_entries: any[];
+    weight_entries: unknown[];
 
-    weight_moving_averages: any[];
+    weight_moving_averages: unknown[];
 
     deleted_at: Date;
 
