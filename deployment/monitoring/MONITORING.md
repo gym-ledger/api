@@ -144,7 +144,8 @@ Grafana's own login stays on behind Access.
 ## Changing things
 
 - **Dashboards:** `grafana/dashboards/*.json` load on start and can't be edited in place in Grafana. To keep a change: edit in Grafana → Save as a copy, or export the JSON and replace the file.
-- **Alerts:** edit `grafana/alerting/api-alerts.yml` and restart Grafana.
+- **Alerts:** edit `grafana/alerting/api-alerts.yml` and deploy.
+- **Config is baked into the images** (`grafana/Dockerfile`, `prometheus/Dockerfile`), not bind-mounted: the deploy checks files out root-only (umask 077), which Grafana (uid 472) and Prometheus (nobody) can't read. Any config change reaches them on the next deploy, which rebuilds both.
 - **Slow threshold / retention:** `REQUEST_LOG_SLOW_MS`, `REQUEST_LOG_RETENTION_DAYS`, `PROMETHEUS_RETENTION`.
 - **New labels:** keep them low-cardinality (a handful of values). A user id or raw URL as a label creates one time series per value and can exhaust Prometheus's memory.
 - **More than one API instance:** add each to `prometheus/prometheus.yml`. Histograms and counters add up across instances; the admin page and dashboards already `sum` them.

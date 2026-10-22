@@ -108,19 +108,18 @@ services:
 
   # Optional: docker compose -f stack/docker-compose.yml --profile monitoring up --build
   prometheus:
-    image: prom/prometheus:v3.15.0
+    build:
+      context: ../deployment/monitoring/prometheus
     restart: unless-stopped
     profiles: ["monitoring"]
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
-    volumes:
-      - ../deployment/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
   grafana:
-    image: grafana/grafana-oss:12.4.3
+    build:
+      context: ../deployment/monitoring/grafana
     restart: unless-stopped
     profiles: ["monitoring"]
-    entrypoint: ["sh", "/etc/gym-ledger/entrypoint.sh"]
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-local-grafana-password}
@@ -128,12 +127,6 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
     ports:
       - "${GRAFANA_PORT:-3002}:3000"
-    volumes:
-      - ../deployment/monitoring/grafana/entrypoint.sh:/etc/gym-ledger/entrypoint.sh:ro
-      - ../deployment/monitoring/grafana/alerting:/etc/gym-ledger/alerting:ro
-      - ../deployment/monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ../deployment/monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ../deployment/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
 

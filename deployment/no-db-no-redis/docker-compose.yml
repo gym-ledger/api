@@ -41,7 +41,8 @@ services:
   # and sends alerts. Both listen on 127.0.0.1 only: open them through an
   # SSH tunnel, Tailscale or Cloudflare Access, never a public port.
   prometheus:
-    image: prom/prometheus:v3.15.0
+    build:
+      context: ./deployment/monitoring/prometheus
     container_name: gym-ledger-prometheus
     restart: unless-stopped
     profiles: ["monitoring"]
@@ -53,15 +54,16 @@ services:
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
-      - ./deployment/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
 
   grafana:
-    image: grafana/grafana-oss:12.4.3
+    # Config is copied into the image (see its Dockerfile): the deploy's
+    # umask 077 checkout would be unreadable to Grafana as a bind mount.
+    build:
+      context: ./deployment/monitoring/grafana
     container_name: gym-ledger-grafana
     restart: unless-stopped
     profiles: ["monitoring"]
-    entrypoint: ["sh", "/etc/gym-ledger/entrypoint.sh"]
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       # Only applied the first time Grafana starts (then it lives in
@@ -80,16 +82,13 @@ services:
       GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.resend.com:587}
       GF_SMTP_USER: ${GRAFANA_SMTP_USER:-resend}
       GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      # A bare address; the name goes in GRAFANA_SMTP_FROM_NAME. Grafana
+      # refuses to start on a "Name <address>" value, even with SMTP off.
       GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-}
       GF_SMTP_FROM_NAME: ${GRAFANA_SMTP_FROM_NAME:-Gym Ledger alerts}
     ports:
       - "127.0.0.1:3002:3000"
     volumes:
-      - ./deployment/monitoring/grafana/entrypoint.sh:/etc/gym-ledger/entrypoint.sh:ro
-      - ./deployment/monitoring/grafana/alerting:/etc/gym-ledger/alerting:ro
-      - ./deployment/monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./deployment/monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./deployment/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
