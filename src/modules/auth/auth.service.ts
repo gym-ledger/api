@@ -17,6 +17,7 @@ import { logger } from "../../config/logger.js";
 import { claimOtpAttemptRepository } from "./auth.repository.js";
 import { deleteUserSessionRepository, fetchUserSessionByHashRepository, rotateUserSessionRepository } from "./userSessions.repository.js";
 import { REFRESH_REUSE_GRACE_MS } from "../../config/constants.js";
+import { publishUserEvent } from "../../infrastructure/redis/userEvents.js";
 
 const OTP_TTL_MS = 1000 * 60 * 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -430,6 +431,7 @@ export const resetPasswordService = async (data: { resetToken: string, newPasswo
         where: [{ field: "user_id", operator: "=", value: userObj.id }],
         useSoftDelete: false,
     });
+    publishUserEvent({ type: "sessions-ended", userId: userObj.id });
 }
 
 /**
@@ -467,6 +469,7 @@ export const refreshTokensService = async (refreshToken: string | undefined) => 
         }
         if (sessionObj.revoked_at) {
             await deleteUserSessionRepository(sessionObj.id);
+            publishUserEvent({ type: "sessions-ended", userId: sessionObj.user_id, sessionId: sessionObj.id });
             throw new AppError("Refresh token revoked", 401);
         }
         const newRefreshToken = generateRefreshToken();
@@ -508,6 +511,7 @@ const refreshWithPreviousToken = async (oldHash: string) => {
     if (!currentToken) {
         logger.warn({ sessionId: sessionObj.id, userId: sessionObj.user_id }, "Replaced refresh token reused, session ended");
         await deleteUserSessionRepository(sessionObj.id);
+        publishUserEvent({ type: "sessions-ended", userId: sessionObj.user_id, sessionId: sessionObj.id });
         throw new AppError("Invalid refresh token", 401);
     }
     const { accessToken, accessTokenExpiresAt } = await generateUserAccessToken({
@@ -549,4 +553,5 @@ export const logoutService = async (refreshToken: string | undefined) => {
         }],
         useSoftDelete: false,
     });
+    publishUserEvent({ type: "sessions-ended", userId: sessionObj.user_id, sessionId: sessionObj.id });
 }

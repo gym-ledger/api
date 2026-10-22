@@ -5,11 +5,13 @@ import { logger } from "./config/logger.js";
 import { connectPostgres } from "./infrastructure/postgres/index.js";
 import { connectRedis } from "./infrastructure/redis/index.js";
 import { startBackgroundJobs } from "./jobs/index.js";
+import { closeAllNotificationStreams, startNotificationStreams } from "./modules/users/users.notifications/users.notifications.stream.js";
 
 async function bootstrap() {
     try {
         await connectPostgres();
         await connectRedis();
+        await startNotificationStreams();
 
         startBackgroundJobs();
 
@@ -28,6 +30,8 @@ async function bootstrap() {
 
                 process.exit(0);
             });
+            // Open event streams would otherwise hold server.close() open forever.
+            closeAllNotificationStreams();
         });
 
     } catch (err) {

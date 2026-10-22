@@ -9,6 +9,8 @@ declare global {
             user?: UsersInterface;
             /** user_sessions.id of the device making the request. */
             userSessionId?: string;
+            /** When the request's access token expires, in ms since the epoch. */
+            userAccessTokenExpiresAt?: number;
 
             adminUserId?: string;
             adminUser?: AdminUserInterface;

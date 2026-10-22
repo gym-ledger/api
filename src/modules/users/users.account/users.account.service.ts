@@ -4,6 +4,7 @@ import { USERS_TABLE, UsersInterface } from "../../../db/schemas/users/users.sch
 import { verifyPassword } from "../../../utils/authentication.js";
 import { toPublicUser } from "../../../utils/users/users.utils.js";
 import { env } from "../../../config/env.js";
+import { publishUserEvent } from "../../../infrastructure/redis/userEvents.js";
 import { sendAccountDeletionCodeService, verifyAccountDeletionCodeService } from "../../auth/auth.service.js";
 import {
     ACCOUNT_DELETION_GRACE_DAYS,
@@ -114,6 +115,8 @@ export const requestAccountDeletionService = async (userId: string, data: { pass
         throw new AppError("Set a password in Settings first, then use it to confirm", 400);
     }
     const scheduledFor = await scheduleAccountDeletionRepository(userId);
+    // Scheduling signs out every device; their open streams end with them.
+    publishUserEvent({ type: "sessions-ended", userId });
     return { deletion_scheduled_for: scheduledFor };
 }
 

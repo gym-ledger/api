@@ -13,6 +13,7 @@ import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/
 import { hashPassword, validateNewPassword, verifyPassword } from "../../../utils/authentication.js";
 import { toPublicUser } from "../../../utils/users/users.utils.js";
 import { deleteOtherUserSessionsRepository } from "../../auth/userSessions.repository.js";
+import { publishUserEvent } from "../../../infrastructure/redis/userEvents.js";
 import {
     assessWeightPace,
     GoalPace,
@@ -399,6 +400,7 @@ export const changeUserPasswordService = async ({
         where: [{ field: "id", operator: "=", value: userId }],
     });
     await deleteOtherUserSessionsRepository(userId, sessionId);
+    publishUserEvent({ type: "sessions-ended", userId, exceptSessionId: sessionId });
 }
 
 

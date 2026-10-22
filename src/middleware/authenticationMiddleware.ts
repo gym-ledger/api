@@ -32,6 +32,7 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
         req.user = user;
         req.userId = user.id;
         req.userSessionId = sessionId;
+        req.userAccessTokenExpiresAt = typeof decoded.payload.exp === "number" ? decoded.payload.exp * 1000 : undefined;
         next();
     } catch (error) {
         // Expired / malformed / badly-signed tokens are a 401, not a server error —

@@ -1,4 +1,5 @@
 import { pg } from "../../../infrastructure/postgres/index.js";
+import { publishUserEvent } from "../../../infrastructure/redis/userEvents.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { UserNotificationsInterface } from "../../../db/schemas/users/notifications/userNotifications.schema.js";
 
@@ -63,6 +64,8 @@ export const postNotificationRepository = async (data: {
             [userId, type, groupKey, dedupeKey, title, body, link],
         );
         await client.query("COMMIT");
+        // Open apps refetch, whether a notice was added or only older ones in its group were removed.
+        publishUserEvent({ type: "notifications", userId });
         return inserted.rows[0] ?? null;
     } catch (error) {
         await client.query("ROLLBACK").catch(() => undefined);
@@ -83,7 +86,8 @@ export const clearNotificationGroupRepository = async (userId: string, groupKey:
         AND deleted_at IS NULL
     `;
     try {
-        await pg.query(query, [userId, groupKey]);
+        const result = await pg.query(query, [userId, groupKey]);
+        if (result.rowCount) publishUserEvent({ type: "notifications", userId });
     } catch (error) {
         // console.log(query);
         // console.log(error);
@@ -146,6 +150,8 @@ export const markNotificationsReadRepository = async (
     `;
     try {
         const result = await pg.query(query, notificationId ? [userId, notificationId] : [userId]);
+        // The user's other devices update their unread badge.
+        if (result.rowCount) publishUserEvent({ type: "notifications", userId });
         return result.rowCount ?? 0;
     } catch (error) {
         // console.log(query);
