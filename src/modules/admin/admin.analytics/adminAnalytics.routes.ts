@@ -17,7 +17,7 @@ import { aiSummaryQuery, listUsersQuery, rangeQuery } from "./adminAnalytics.sch
 import { auditAdminAction } from "../admin.audit/adminAudit.middleware.js";
 // Read-only, except the check-in retry. Every endpoint takes optional
 // `from`/`to` (YYYY-MM-DD, UTC days) where a date range applies. "Active" is
-// defined in algorithms/user-activity.md.
+// defined in adminAnalytics.repository.ts.
 const adminAnalyticsRouter = Router();
 
 adminAnalyticsRouter.get("/dashboard", validate({ query: noInput, body: noInput }), asyncHandler(getDashboardForAdmin));

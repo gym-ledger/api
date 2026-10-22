@@ -5,9 +5,9 @@ import { WORKOUT_PROGRAM_EXERCISES_TABLE, WorkoutProgramExercisesInterface } fro
 import { USER_MUSCLE_SIGNALS_TABLE, UserMuscleSignalsInterface } from "../../../db/schemas/users/muscles/userMuscleSignals.schema.js";
 import { fetchMuscleSignalsForUserRepository } from "./users.muscleSignals.repository.js";
 
-// See algorithms/muscle-training-fatigue-signal.md for the full derivation —
-// this file is the reference implementation of that document. Keep them in
-// sync; a change to any constant or formula here belongs in that doc too.
+// How much each muscle has been trained recently and how fatigued it is,
+// from decaying accumulators. This file is the reference implementation: the
+// constants and formulas below define the signal.
 export const MUSCLE_SIGNAL_CONFIG = {
     effectiveRirThreshold: 5,
     missingRirEffectiveness: 0.6,

@@ -1,6 +1,6 @@
 -- Body-weight goal, kept on the user's health preferences (one goal at a
--- time). `weight_goal_preset` is the pace the user picked (see
--- algorithms/weekly-checkin.md §5 for the rates); it is NULL for "maintain".
+-- time). `weight_goal_preset` is the pace the user picked (rates in
+-- utils/users/users.weightGoal.utils.ts); it is NULL for "maintain".
 -- 'custom' means the user typed their own pace into `custom_weekly_pace`,
 -- either as % of body weight (`custom_weekly_pace_unit` = 'pct') or in their
 -- weight units ('weight'), always unsigned — the goal gives the direction.
@@ -30,7 +30,7 @@ ALTER TABLE user_health_preferences
 -- only writes `content` from them. A row is claimed as 'pending' before the
 -- model is called so concurrent requests never call it twice. 'skipped'
 -- means the week didn't meet the data requirements for a model call
--- (algorithms/weekly-checkin.md §2); `skip_reasons` says which ones.
+-- (see users.checkins.service.ts); `skip_reasons` says which ones.
 CREATE TABLE IF NOT EXISTS user_weekly_checkins (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 

@@ -1,8 +1,8 @@
 /**
  * Rebuilds `user_muscle_signals` from scratch by replaying `workout_sets`
  * history in chronological order. Safe to run any time — the signals are a
- * pure function of set history (see algorithms/muscle-training-fatigue-signal.md
- * §6), so this is how you recover from a bug, a retuned constant, or just
+ * pure function of set history (see users.muscleSignals.service.ts), so
+ * this is how you recover from a bug, a retuned constant, or just
  * cold-starting the feature against existing data.
  *
  * Usage:

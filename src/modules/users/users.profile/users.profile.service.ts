@@ -403,7 +403,7 @@ export const changeUserPasswordService = async ({
 
 
 // ---------------------------------------------------------------------------
-// Body-weight goal — see algorithms/weekly-checkin.md §5
+// Body-weight goal (paces in utils/users/users.weightGoal.utils.ts)
 // ---------------------------------------------------------------------------
 
 const GOAL_MAX_WEEKS = 156;

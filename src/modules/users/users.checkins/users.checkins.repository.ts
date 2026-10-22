@@ -161,7 +161,7 @@ export interface ExerciseWeekProgressRow {
 
 /**
  * Every exercise trained this week, with its best set (Epley e1RM, same
- * eligibility as algorithms/personal-records.md) this week, before this
+ * eligibility as personal records, fetchRecentPRsRepository) this week, before this
  * week, and over the last 3 weeks vs. before them.
  */
 export const fetchExerciseWeekProgressRepository = async (

@@ -254,7 +254,7 @@ export const fetchPlanDetailTreeRepository = async (
                 ORDER BY wpe.exercise_order ASC NULLS LAST`,
                 [sessions.map((s) => s.id)],
             )
-            : { rows: [] as any[] };
+            : { rows: [] as PlanDetailExerciseRow[] };
 
         const exercisesBySession = new Map<string, PlanDetailExerciseRow[]>();
         for (const row of exercisesResult.rows) {
@@ -743,8 +743,7 @@ export interface PersonalRecordRow {
 
 /**
  * The user's current personal record (best estimated 1RM — Epley formula)
- * for every exercise they've logged, newest-achieved first. See
- * algorithms/personal-records.md for the full model.
+ * for every exercise they've logged, newest-achieved first.
  */
 export const fetchRecentPRsRepository = async (
     userId: string,

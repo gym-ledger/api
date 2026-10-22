@@ -47,8 +47,8 @@ import {
     fetchWeightEntriesBetweenRepository,
 } from "./users.checkins.repository.js";
 
-// See algorithms/weekly-checkin.md for what each number means and why. Keep
-// the two in sync.
+// The web app keeps a copy of the check-in shapes below
+// (src/lib/api/checkins.ts); keep the two in sync.
 
 const MAX_LIST_ITEMS = 4;
 // Retry delays after a failed model call, by attempt number.
@@ -368,7 +368,7 @@ export const generateCheckinContent = async (userId: string, stats: WeeklyChecki
 }
 
 // ---------------------------------------------------------------------------
-// Who gets a model call — algorithms/weekly-checkin.md §2
+// Who gets a model call
 // ---------------------------------------------------------------------------
 
 export const CHECKIN_MIN_WEIGH_IN_DAYS = 4;

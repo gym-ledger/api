@@ -1,7 +1,6 @@
 import { CustomPaceUnit, WeightGoal, WeightGoalPace, WeightGoalPreset } from "../../db/schemas/users/userHealthPreferences.schema.js";
 
-// See algorithms/weekly-checkin.md §5 for where these rates come from. Rates
-// are % of body weight per week — a fixed kg/lbs figure would be far too
+// Rates are % of body weight per week — a fixed kg/lbs figure would be far too
 // fast for a light lifter and too slow for a heavy one.
 export interface WeightGoalPresetConfig {
     key: WeightGoalPreset;

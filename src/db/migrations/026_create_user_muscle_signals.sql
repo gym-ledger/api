@@ -8,8 +8,8 @@ CREATE TABLE IF NOT EXISTS user_muscle_signals (
         REFERENCES muscles(id)
         ON DELETE RESTRICT,
 
-    -- Raw decaying accumulators. See algorithms/muscle-training-fatigue-signal.md
-    -- for the formulas — both are lazily decayed off `last_computed_at`, not on
+    -- Raw decaying accumulators (formulas in users.muscleSignals.service.ts);
+    -- both are lazily decayed off `last_computed_at`, not on
     -- a schedule, so these values are only correct as of that timestamp.
     training_value NUMERIC(10,4) NOT NULL DEFAULT 0,
     fatigue_value NUMERIC(10,4) NOT NULL DEFAULT 0,

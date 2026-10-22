@@ -1,6 +1,6 @@
 # gym-ledger/api
 
-The REST API behind Gym Ledger, a self-hostable workout logger. Both front-ends talk only to this API: [`gym-ledger/web`](https://github.com/gym-ledger/web) (the app people train with) and [`gym-ledger/admin`](https://github.com/gym-ledger/admin) (the admin panel).
+The REST API behind Gym Ledger, a self-hostable workout logger. Both front-ends talk only to this API: [`gym-ledger/web`](https://github.com/gym-ledger/web) (the app people train with) and [`gym-ledger/admin`](https://github.com/gym-ledger/admin) (the admin panel). Screenshots of both are in their READMEs.
 
 ## What it does
 

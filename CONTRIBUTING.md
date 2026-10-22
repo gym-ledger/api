@@ -11,6 +11,8 @@ Thanks for helping out. This project is split across three repositories:
 - **Features or bigger changes**: open an issue first and describe what you want to change and why,
   so we can agree on the approach before you spend time on it.
 - **Security problems**: don't open an issue. See [SECURITY.md](./SECURITY.md).
+- **What's planned**: see [FUTURE_PLANS.md](./FUTURE_PLANS.md) before proposing a feature.
+- **Conduct**: everyone taking part follows the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Running it locally
 

@@ -1,8 +1,8 @@
 import { pg } from "../../../infrastructure/postgres/index.js";
 
 /**
- * Read-only queries behind the admin analytics pages. "Active" follows
- * algorithms/user-activity.md everywhere: completed workouts, logged
+ * Read-only queries behind the admin analytics pages. "Active" means the
+ * same everywhere: completed workouts, logged
  * weigh-ins and session sign-ins/refreshes, over rolling windows in UTC.
  *
  * Date ranges are inclusive "YYYY-MM-DD" UTC days, already validated by the
