@@ -191,6 +191,11 @@ export const fetchUserDataForExportRepository = async (userId: string) => {
             weekly_checkins: await all(`SELECT * FROM user_weekly_checkins WHERE user_id = $1 ORDER BY created_at`),
             notifications: await all(`SELECT * FROM user_notifications WHERE user_id = $1 ORDER BY created_at`),
             ai_requests: await all(`SELECT * FROM ai_requests WHERE user_id = $1 ORDER BY created_at`),
+            // What the privacy policy lists; internal fields (stack traces,
+            // request ids) stay out.
+            failed_and_slow_requests: await all(`
+                SELECT created_at, method, path, status_code, duration_ms, error_type, error_message
+                FROM api_request_issues WHERE user_id = $1 ORDER BY created_at`),
             signed_in_devices: await all(`SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY created_at`),
             data_exports: await all(`SELECT id, status, requested_at, completed_at, expires_at FROM user_data_exports WHERE user_id = $1 ORDER BY requested_at`),
         };
@@ -350,6 +355,8 @@ export const purgeAccountRepository = async (userId: string): Promise<boolean> =
         }
         // Usage counts stay for the daily AI limit; they hold no content.
         await run(`UPDATE ai_requests SET user_id = NULL WHERE user_id = $1`);
+        // Error/slow request log rows are kept (30 days at most) without the user.
+        await run(`UPDATE api_request_issues SET user_id = NULL WHERE user_id = $1`);
 
         // Sign-in codes are keyed by email / phone, not user id.
         if (email) {

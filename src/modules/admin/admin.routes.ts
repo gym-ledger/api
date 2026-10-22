@@ -4,11 +4,13 @@ import adminAuthRouter from "./admin.auth/adminAuth.routes.js";
 import adminCrudRouter from "./admin.crud/adminCrud.routes.js";
 import adminAnalyticsRouter from "./admin.analytics/adminAnalytics.routes.js";
 import adminAccountRouter from "./admin.account/adminAccount.routes.js";
+import adminMonitoringRouter from "./admin.monitoring/adminMonitoring.routes.js";
 import { verifyAdminToken } from "../../middleware/authenticationMiddleware.js";
 
 adminRouter.use("/auth", adminAuthRouter);
 adminRouter.use("/crud", verifyAdminToken, adminCrudRouter);
 adminRouter.use("/analytics", verifyAdminToken, adminAnalyticsRouter);
 adminRouter.use("/account", verifyAdminToken, adminAccountRouter);
+adminRouter.use("/monitoring", verifyAdminToken, adminMonitoringRouter);
 
 export default adminRouter;

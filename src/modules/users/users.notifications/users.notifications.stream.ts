@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
+import { Gauge } from "prom-client";
 import { logger } from "../../../config/logger.js";
+import { metricsRegistry } from "../../../infrastructure/metrics/index.js";
 import { subscribeToUserEvents, UserEvent } from "../../../infrastructure/redis/userEvents.js";
 
 // Proxies drop a quiet connection (Cloudflare after ~100s), so say something well before that.
@@ -16,6 +18,19 @@ interface Stream {
 }
 
 const streamsByUser = new Map<string, Set<Stream>>();
+
+// Streams are left out of request latency metrics (they stay open by
+// design), so they get their own gauge.
+new Gauge({
+    name: "notification_streams_open",
+    help: "Open notification event streams on this API process",
+    registers: [metricsRegistry],
+    collect() {
+        let open = 0;
+        for (const streams of streamsByUser.values()) open += streams.size;
+        this.set(open);
+    },
+});
 
 const write = (stream: Stream, chunk: string) => {
     if (stream.res.writableLength > MAX_BUFFERED_BYTES) {
