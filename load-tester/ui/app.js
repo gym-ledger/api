@@ -98,7 +98,7 @@ document.getElementById("theme").addEventListener("click", () => {
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
-    try { localStorage.setItem("lt-theme", root.dataset.theme); } catch {}
+    try { localStorage.setItem("lt-theme", root.dataset.theme); } catch { /* storage blocked: the theme just isn't remembered */ }
     redrawCharts();
 });
 const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -723,7 +723,7 @@ function sessionStorageGet(k) {
     try { return sessionStorage.getItem(k); } catch { return null; }
 }
 function sessionStorageSet(k, v) {
-    try { sessionStorage.setItem(k, v); } catch {}
+    try { sessionStorage.setItem(k, v); } catch { /* storage blocked: not remembered */ }
 }
 
 route();

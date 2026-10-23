@@ -28,13 +28,18 @@ export interface Caller {
     refresh?: string;
 }
 
-export interface Res {
+/** `T` is what the caller expects in `data`; nothing checks it, so read it defensively. */
+export interface Res<T = unknown> {
     status: number;
-    /** The response envelope's `data` (or the raw body when it isn't the envelope). */
-    data: any;
-    body: any;
+    /** The response envelope's `data` (or the raw body when it isn't the envelope); undefined on failure. */
+    data: T | undefined;
+    body: unknown;
     ms: number;
 }
+
+/** The envelope's `error` when there is one, else the whole body, for warnings. */
+const errorOf = (body: unknown) =>
+    body && typeof body === "object" && "error" in body ? body.error : body;
 
 export interface RequestOptions {
     body?: unknown;
@@ -45,7 +50,7 @@ export interface RequestOptions {
 }
 
 /** A request, timed and recorded under `key` (the route with its ids replaced). Never throws. */
-export async function request(caller: Caller, key: string, method: string, path: string, o: RequestOptions = {}): Promise<Res> {
+export async function request<T = unknown>(caller: Caller, key: string, method: string, path: string, o: RequestOptions = {}): Promise<Res<T>> {
     const headers: Record<string, string> = {
         "user-agent": userAgent,
         accept: "application/json",
@@ -72,7 +77,7 @@ export async function request(caller: Caller, key: string, method: string, path:
         // The whole body, like a client: transfer time is part of the latency.
         const text = await res.text();
         const ms = performance.now() - started;
-        let body: any;
+        let body: unknown;
         try {
             body = text ? JSON.parse(text) : undefined;
         } catch {
@@ -85,12 +90,12 @@ export async function request(caller: Caller, key: string, method: string, path:
         const outcome = outcomeOf(res.status, o.expect);
         recordRequest(key, ms, String(res.status), outcome);
         if (outcome === "client") {
-            warnOnce(`${key} ${res.status}`, "client-error", `${key} → ${res.status}: ${JSON.stringify(body?.error ?? body)?.slice(0, 300)}`);
+            warnOnce(`${key} ${res.status}`, "client-error", `${key} → ${res.status}: ${JSON.stringify(errorOf(body))?.slice(0, 300)}`);
         } else if (outcome === "server") {
-            warnOnce(`${key} ${res.status}`, "server-error", `${key} → ${res.status}: ${JSON.stringify(body?.error ?? body)?.slice(0, 300)}`);
+            warnOnce(`${key} ${res.status}`, "server-error", `${key} → ${res.status}: ${JSON.stringify(errorOf(body))?.slice(0, 300)}`);
         }
         const data = body && typeof body === "object" && "data" in body ? body.data : body;
-        return { status: res.status, data, body, ms };
+        return { status: res.status, data: data as T, body, ms };
     } catch (err) {
         const ms = performance.now() - started;
         const name = (err as Error)?.name;

@@ -1,6 +1,7 @@
 // The simulated people: the seeded accounts, each with a stable IP, an activity level (a few
 // regulars, many occasional users) and what their browser remembers between visits: the
 // refresh cookie, the access token, their plan.
+import type { AuthConfig, Profile, SessionTokens } from "./api.js";
 import type { Config } from "./config.js";
 import { type Caller, request, type RequestOptions, type Res } from "./http.js";
 import { chance, counters, event, inRange, pick, think, warnOnce } from "./runtime.js";
@@ -39,10 +40,8 @@ export class VirtualUser {
     readonly bodyWeight: number;
     busy = false;
     accessExpiresAt = 0;
-    profile: any = null;
+    profile: Profile | null = null;
     assignment: Assignment | null = null;
-    /** A workout left open last time (the app was closed mid-way). */
-    ongoingSessionId: string | null = null;
 
     constructor(readonly n: number, ip: string, c: Config) {
         const rnd = seeded(n * 7919);
@@ -69,7 +68,7 @@ export class VirtualUser {
         this.profile = null;
     }
 
-    setTokens(data: any): void {
+    setTokens(data: SessionTokens | undefined): void {
         this.caller.access = data?.accessToken;
         const at = data?.accessTokenExpiresAt ? Date.parse(data.accessTokenExpiresAt) : NaN;
         this.accessExpiresAt = Number.isFinite(at) ? at : Date.now() + 14 * 60_000;
@@ -207,7 +206,7 @@ export class Auth {
     }
 
     async refresh(u: VirtualUser): Promise<boolean> {
-        const r = await request(u.caller, "PUT /auth/refresh-tokens", "PUT", "/auth/refresh-tokens", { expect: [401] });
+        const r = await request<SessionTokens>(u.caller, "PUT /auth/refresh-tokens", "PUT", "/auth/refresh-tokens", { expect: [401] });
         if (r.status === 200) {
             counters.refreshesOk++;
             u.setTokens(r.data);
@@ -226,7 +225,7 @@ export class Auth {
         await think([3, 9]);
         for (let attempt = 1; attempt <= this.s.maxAttempts; attempt++) {
             const typo = chance(attempt === 1 ? this.s.typoRate : this.s.repeatTypoRate);
-            const r = await request(u.caller, "POST /auth/login/password", "POST", "/auth/login/password", {
+            const r = await request<SessionTokens>(u.caller, "POST /auth/login/password", "POST", "/auth/login/password", {
                 body: { method: "email", email: u.email, password: typo ? mistype(this.s.password) : this.s.password },
                 expect: typo ? [401] : [],
             });
@@ -265,7 +264,7 @@ export class Auth {
      */
     private async forgotPassword(u: VirtualUser): Promise<void> {
         await think([2, 6]);
-        const config = await request(u.caller, "GET /auth/config", "GET", "/auth/config");
+        const config = await request<AuthConfig>(u.caller, "GET /auth/config", "GET", "/auth/config");
         if (config.data?.captcha) {
             warnOnce("otp-captcha", "setup", "paid.otpSends is on, but this API asks for a CAPTCHA before sending a code: forgot-password is skipped");
             return;
@@ -284,12 +283,12 @@ export class Auth {
 }
 
 /** An authenticated request; on 401 it refreshes once (or signs in again) and retries. */
-export async function authed(auth: Auth, u: VirtualUser, key: string, method: string, path: string, o: Omit<RequestOptions, "auth"> = {}): Promise<Res> {
+export async function authed<T = unknown>(auth: Auth, u: VirtualUser, key: string, method: string, path: string, o: Omit<RequestOptions, "auth"> = {}): Promise<Res<T>> {
     if (!u.hasValidAccess && u.caller.refresh) await auth.refresh(u);
-    const r = await request(u.caller, key, method, path, { ...o, auth: true, expect: [...(o.expect ?? []), 401] });
+    const r = await request<T>(u.caller, key, method, path, { ...o, auth: true, expect: [...(o.expect ?? []), 401] });
     if (r.status !== 401) return r;
     if (!(await auth.refresh(u)) && !(await auth.login(u))) return r;
-    return request(u.caller, key, method, path, { ...o, auth: true });
+    return request<T>(u.caller, key, method, path, { ...o, auth: true });
 }
 
 /** A random existing account's email (for bots that got hold of a real address). */

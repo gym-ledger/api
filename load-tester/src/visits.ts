@@ -2,6 +2,10 @@
 // screen (gym-app-nextjs) and human pauses in between. Every visit starts on Home with the
 // notification stream open; what follows depends on why they opened the app.
 import { randomUUID } from "node:crypto";
+import {
+    list, type Listing, type Muscle, type Notification, type OngoingWorkout, type PersonalRecord, type PlanAssignment,
+    type PlanExercise, type Profile, type PublicPlan, type SetsBatchResult, type WeightView, type WithId,
+} from "./api.js";
 import type { Config, VisitKind } from "./config.js";
 import { openStream } from "./http.js";
 import {
@@ -15,8 +19,16 @@ const ACCOUNT_SETTINGS = {
     equipment: ["full_gym", "home_dumbbells", "bodyweight"],
 };
 
-/** Whatever list a response holds: a bare array or a `{ data: [...] }` page. */
-const list = (x: any): any[] => (Array.isArray(x) ? x : Array.isArray(x?.data) ? x.data : []);
+/** One set as the app's sync queue holds it, before it knows the session's id. */
+interface QueuedSet {
+    client_id: string;
+    workout_program_exercise_id: string;
+    weight: number;
+    reps: number;
+    rir: number;
+    is_warmup: boolean;
+    drop_sets?: { weight: number; reps: number }[];
+}
 
 export class Visits {
     private readonly dateFmt: Intl.DateTimeFormat;
@@ -29,9 +41,9 @@ export class Visits {
         return this.dateFmt.format(Date.now() + offsetDays * 86_400_000);
     }
 
-    private get = (u: VirtualUser, key: string, path: string) => authed(this.auth, u, key, "GET", path);
-    private send = (u: VirtualUser, key: string, method: string, path: string, body?: unknown, expect?: number[]) =>
-        authed(this.auth, u, key, method, path, { body, expect });
+    private get = <T = unknown>(u: VirtualUser, key: string, path: string) => authed<T>(this.auth, u, key, "GET", path);
+    private send = <T = unknown>(u: VirtualUser, key: string, method: string, path: string, body?: unknown, expect?: number[]) =>
+        authed<T>(this.auth, u, key, method, path, { body, expect });
 
     private screen = () => think(this.c.behaviour.thinkSeconds);
 
@@ -67,9 +79,9 @@ export class Visits {
         try {
             if (!(await this.gate(u))) return false;
             if (!u.assignment) {
-                const active = list((await this.get(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active")).data);
+                const active = list((await this.get<Listing<PlanAssignment>>(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active")).data);
                 if (!active.length) {
-                    const pub = list((await this.get(u, "GET /user/workout/plans/public", "/user/workout/plans/public")).data);
+                    const pub = list((await this.get<Listing<PublicPlan>>(u, "GET /user/workout/plans/public", "/user/workout/plans/public")).data);
                     if (pub.length) await this.selectPlan(u, pick(pub).workout_program_id);
                 }
             }
@@ -88,19 +100,19 @@ export class Visits {
      */
     private async gate(u: VirtualUser): Promise<boolean> {
         if (!u.profile) {
-            const r = await this.get(u, "GET /user/profile", "/user/profile");
-            if (r.status !== 200) return false;
+            const r = await this.get<Profile>(u, "GET /user/profile", "/user/profile");
+            if (r.status !== 200 || !r.data) return false;
             u.profile = r.data;
         }
         const p = u.profile;
         if (p.privacy_policy_accepted === false && p.current_privacy_policy_version) {
             await this.screen();
-            const r = await this.send(u, "POST /user/profile/privacy-policy/accept", "POST", "/user/profile/privacy-policy/accept",
+            const r = await this.send<Profile>(u, "POST /user/profile/privacy-policy/accept", "POST", "/user/profile/privacy-policy/accept",
                 { version: p.current_privacy_policy_version });
             if (r.status === 200) u.profile = { ...p, ...r.data };
         }
         if (!u.profile.onboarded_at) await this.onboard(u);
-        if (!!u.profile.ai_checkins_enabled !== u.wantsAi) {
+        if (!!u.profile?.ai_checkins_enabled !== u.wantsAi) {
             const r = await this.send(u, "PUT /user/profile/ai-checkins", "PUT", "/user/profile/ai-checkins",
                 u.wantsAi ? { enabled: true, consent: true } : { enabled: false });
             if (r.status === 200) u.profile = { ...u.profile, ai_checkins_enabled: u.wantsAi };
@@ -112,10 +124,10 @@ export class Visits {
     private async onboard(u: VirtualUser): Promise<void> {
         const [, plans] = await Promise.all([
             this.get(u, "GET /user/profile/preferences", "/user/profile/preferences"),
-            this.get(u, "GET /user/workout/plans/public", "/user/workout/plans/public"),
+            this.get<Listing<PublicPlan>>(u, "GET /user/workout/plans/public", "/user/workout/plans/public"),
         ]);
         await think([20, 60]);
-        const r = await this.send(u, "PUT /user/profile/onboarding", "PUT", "/user/profile/onboarding", {
+        const r = await this.send<{ user?: Profile }>(u, "PUT /user/profile/onboarding", "PUT", "/user/profile/onboarding", {
             timezone: this.c.population.timezone,
             weight_units: "kg",
             height_units: "cm",
@@ -170,15 +182,15 @@ export class Visits {
     /** Home: everything its cards load at once, as the browser fires them in parallel. */
     private async home(u: VirtualUser): Promise<void> {
         const [active] = await Promise.all([
-            this.get(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active"),
+            this.get<Listing<PlanAssignment>>(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active"),
             this.get(u, "GET /user/workout/stats/dashboard", "/user/workout/stats/dashboard"),
             this.get(u, "GET /user/notifications/unread-count", "/user/notifications/unread-count"),
             this.get(u, "GET /user/workout/stats/progress-overview", "/user/workout/stats/progress-overview"),
-            this.get(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=3"),
+            this.get<Listing<PersonalRecord>>(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=3"),
             this.get(u, "GET /user/workout/alarms/active", "/user/workout/alarms/active"),
             this.get(u, "GET /user/checkins/weekly", "/user/checkins/weekly"),
-            this.get(u, "GET /user/workout/sessions", "/user/workout/sessions?limit=10"),
-            this.get(u, "GET /user/weight/view", `/user/weight/view?date=${this.today()}`),
+            this.get<Listing<WithId>>(u, "GET /user/workout/sessions", "/user/workout/sessions?limit=10"),
+            this.get<WeightView>(u, "GET /user/weight/view", `/user/weight/view?date=${this.today()}`),
         ]);
         // Today's card: the plan's current day, its sessions and their exercises.
         const plan = list(active.data)[0];
@@ -186,9 +198,9 @@ export class Visits {
             u.assignment = { id: plan.id, versionId: plan.workout_program_version_id, currentDayId: plan.current_program_day_id ?? null };
             const day = await this.planDay(u);
             if (day) {
-                const sessions = await this.get(u, "GET /user/workout/assignments/:id/days/:id/sessions", `/user/workout/assignments/${plan.id}/days/${day}/sessions`);
+                const sessions = await this.get<Listing<WithId>>(u, "GET /user/workout/assignments/:id/days/:id/sessions", `/user/workout/assignments/${plan.id}/days/${day}/sessions`);
                 await Promise.all(list(sessions.data).map((s) =>
-                    this.get(u, "GET /user/workout/assignments/:id/days/:id/sessions/:id/exercises", `/user/workout/assignments/${plan.id}/days/${day}/sessions/${s.id}/exercises`)));
+                    this.get<Listing<PlanExercise>>(u, "GET /user/workout/assignments/:id/days/:id/sessions/:id/exercises", `/user/workout/assignments/${plan.id}/days/${day}/sessions/${s.id}/exercises`)));
             }
         } else {
             u.assignment = null;
@@ -200,7 +212,7 @@ export class Visits {
     private async planDay(u: VirtualUser): Promise<string | null> {
         const a = u.assignment;
         if (!a) return null;
-        const days = list((await this.get(u, "GET /user/workout/assignments/:id/days", `/user/workout/assignments/${a.id}/days`)).data);
+        const days = list((await this.get<Listing<WithId>>(u, "GET /user/workout/assignments/:id/days", `/user/workout/assignments/${a.id}/days`)).data);
         return a.currentDayId && days.some((d) => d.id === a.currentDayId) ? a.currentDayId : days[0]?.id ?? null;
     }
 
@@ -208,9 +220,9 @@ export class Visits {
 
     private async quickCheck(u: VirtualUser): Promise<void> {
         if (chance(0.45)) {
-            const r = await this.get(u, "GET /user/notifications", "/user/notifications");
+            const r = await this.get<{ notifications?: Notification[] }>(u, "GET /user/notifications", "/user/notifications");
             await this.screen();
-            const unread = list(r.data?.notifications ?? r.data).filter((n) => !n.read_at);
+            const unread = list(r.data?.notifications).filter((n) => !n.read_at);
             if (unread.length && chance(0.5)) {
                 if (chance(0.6)) await this.send(u, "POST /user/notifications/read-all", "POST", "/user/notifications/read-all");
                 else await this.send(u, "POST /user/notifications/:id/read", "POST", `/user/notifications/${unread[0].id}/read`);
@@ -218,14 +230,14 @@ export class Visits {
             }
         }
         if (chance(0.3)) {
-            await this.get(u, "GET /user/workout/sessions", "/user/workout/sessions?page=1&limit=20");
+            await this.get<Listing<WithId>>(u, "GET /user/workout/sessions", "/user/workout/sessions?page=1&limit=20");
             await this.screen();
         }
     }
 
     private async weighIn(u: VirtualUser): Promise<void> {
         const today = this.today();
-        const view = await this.get(u, "GET /user/weight/view", `/user/weight/view?date=${today}`);
+        const view = await this.get<WeightView>(u, "GET /user/weight/view", `/user/weight/view?date=${today}`);
         await think([5, 20]);
         const weight = Math.round((u.bodyWeight + between(-1.2, 1.2)) * 10) / 10;
         const existing = list(view.data?.weight_entries).find((e) => e.day === today);
@@ -236,7 +248,7 @@ export class Visits {
         // The Body tab: the chart over a month or a few, in 30-day windows.
         await this.screen();
         for (let back = 0; back < intIn([1, 3]); back++) {
-            await this.get(u, "GET /user/weight/view", `/user/weight/view?date=${this.today(-30 * back)}`);
+            await this.get<WeightView>(u, "GET /user/weight/view", `/user/weight/view?date=${this.today(-30 * back)}`);
         }
         if (chance(0.2)) {
             const goal = await this.get(u, "GET /user/profile/goal", "/user/profile/goal");
@@ -255,7 +267,7 @@ export class Visits {
 
     private async progress(u: VirtualUser): Promise<void> {
         const [prs] = await Promise.all([
-            this.get(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=300"),
+            this.get<Listing<PersonalRecord>>(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=300"),
             this.get(u, "GET /user/muscle-signals", "/user/muscle-signals"),
             this.get(u, "GET /user/workout/stats/progress-overview", "/user/workout/stats/progress-overview"),
         ]);
@@ -265,7 +277,7 @@ export class Visits {
             await this.screen();
         }
         if (chance(0.5)) {
-            const page = await this.get(u, "GET /user/workout/sessions", "/user/workout/sessions?page=1&limit=20");
+            const page = await this.get<Listing<WithId>>(u, "GET /user/workout/sessions", "/user/workout/sessions?page=1&limit=20");
             await this.screen();
             const s = list(page.data)[Math.floor(Math.random() * 3)];
             if (s) {
@@ -275,7 +287,7 @@ export class Visits {
                 ]);
                 await this.screen();
             }
-            if (chance(0.25)) await this.get(u, "GET /user/workout/sessions", "/user/workout/sessions?page=2&limit=20");
+            if (chance(0.25)) await this.get<Listing<WithId>>(u, "GET /user/workout/sessions", "/user/workout/sessions?page=2&limit=20");
         }
     }
 
@@ -284,7 +296,7 @@ export class Visits {
             // The Workout tab: plans.
             const [, pub] = await Promise.all([
                 this.get(u, "GET /user/workout/plans/mine", "/user/workout/plans/mine"),
-                this.get(u, "GET /user/workout/plans/public", "/user/workout/plans/public"),
+                this.get<Listing<PublicPlan>>(u, "GET /user/workout/plans/public", "/user/workout/plans/public"),
             ]);
             await this.screen();
             const plan = pick(list(pub.data));
@@ -295,11 +307,11 @@ export class Visits {
             }
         } else {
             // The exercise library.
-            const muscles = chance(0.3) ? await this.get(u, "GET /user/exercises/muscles", "/user/exercises/muscles") : null;
+            const muscles = chance(0.3) ? await this.get<Listing<Muscle>>(u, "GET /user/exercises/muscles", "/user/exercises/muscles") : null;
             const region = muscles && list(muscles.data)[0]?.body_region;
-            const page = await this.get(u, "GET /user/exercises", `/user/exercises?page=1&limit=30${region ? `&bodyRegion=${encodeURIComponent(region)}` : ""}`);
+            const page = await this.get<Listing<WithId>>(u, "GET /user/exercises", `/user/exercises?page=1&limit=30${region ? `&bodyRegion=${encodeURIComponent(region)}` : ""}`);
             await this.screen();
-            if (chance(0.3)) await this.get(u, "GET /user/exercises", "/user/exercises?page=2&limit=30");
+            if (chance(0.3)) await this.get<Listing<WithId>>(u, "GET /user/exercises", "/user/exercises?page=2&limit=30");
             const ex = pick(list(page.data));
             if (ex) {
                 await Promise.all([
@@ -314,7 +326,7 @@ export class Visits {
     private async settings(u: VirtualUser): Promise<void> {
         await Promise.all([
             this.get(u, "GET /user/profile/preferences", "/user/profile/preferences"),
-            this.get(u, "GET /user/profile", "/user/profile"),
+            this.get<Profile>(u, "GET /user/profile", "/user/profile"),
             this.get(u, "GET /user/profile/goal", "/user/profile/goal"),
         ]);
         await this.screen();
@@ -336,13 +348,13 @@ export class Visits {
     private async workout(u: VirtualUser): Promise<void> {
         const w = this.c.behaviour.workout;
         const [active, ongoing] = await Promise.all([
-            this.get(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active"),
-            this.get(u, "GET /user/workout/sessions/ongoing", "/user/workout/sessions/ongoing"),
+            this.get<Listing<PlanAssignment>>(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active"),
+            this.get<OngoingWorkout | null>(u, "GET /user/workout/sessions/ongoing", "/user/workout/sessions/ongoing"),
         ]);
         let plan = list(active.data)[0];
         if (!plan) {
             // No plan yet: pick one first, as the Workout tab would make them.
-            const r = await this.get(u, "GET /user/workout/plans/public", "/user/workout/plans/public");
+            const r = await this.get<Listing<PublicPlan>>(u, "GET /user/workout/plans/public", "/user/workout/plans/public");
             const pub = list(r.data);
             if (!pub.length) {
                 if (r.status === 200) warnOnce("no-plans", "setup", "no public workout plans: workouts can't be simulated (publish system plans in the admin panel)");
@@ -350,7 +362,7 @@ export class Visits {
             }
             await this.screen();
             await this.selectPlan(u, pick(pub).workout_program_id);
-            plan = list((await this.get(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active")).data)[0];
+            plan = list((await this.get<Listing<PlanAssignment>>(u, "GET /user/workout/assignments/active", "/user/workout/assignments/active")).data)[0];
             if (!plan) return;
         }
         u.assignment = { id: plan.id, versionId: plan.workout_program_version_id, currentDayId: plan.current_program_day_id ?? null };
@@ -370,25 +382,25 @@ export class Visits {
         } else {
             dayId = await this.planDay(u);
             if (!dayId) return;
-            const sessions = list((await this.get(u, "GET /user/workout/assignments/:id/days/:id/sessions", `/user/workout/assignments/${plan.id}/days/${dayId}/sessions`)).data);
+            const sessions = list((await this.get<Listing<WithId>>(u, "GET /user/workout/assignments/:id/days/:id/sessions", `/user/workout/assignments/${plan.id}/days/${dayId}/sessions`)).data);
             daySessionId = sessions[0]?.id ?? null;
             sessionId = randomUUID(); // a draft: created with this id when the first set syncs
         }
         if (!dayId || !daySessionId) return;
-        const exercises = list((await this.get(u, "GET /user/workout/assignments/:id/days/:id/sessions/:id/exercises",
+        const exercises = list((await this.get<Listing<PlanExercise>>(u, "GET /user/workout/assignments/:id/days/:id/sessions/:id/exercises",
             `/user/workout/assignments/${plan.id}/days/${dayId}/sessions/${daySessionId}/exercises`)).data);
         if (!exercises.length) return;
         await this.screen();
 
         const offline = chance(w.offlineShare);
         const abandonAt = chance(w.abandonShare) ? Math.random() : Infinity;
-        const queue: any[] = [];
+        const queue: QueuedSet[] = [];
         const logged: string[] = [];
         let flushes = 0;
 
         const ensureStarted = async (): Promise<boolean> => {
             if (started) return true;
-            const r = await this.send(u, "POST /user/workout/sessions/start", "POST", "/user/workout/sessions/start", {
+            const r = await this.send<WithId>(u, "POST /user/workout/sessions/start", "POST", "/user/workout/sessions/start", {
                 assignment_id: plan.id,
                 program_day_id: dayId,
                 program_day_session_id: daySessionId,
@@ -404,7 +416,7 @@ export class Visits {
         const flush = async (): Promise<void> => {
             if (!queue.length || !(await ensureStarted())) return;
             const batch = queue.splice(0, 100).map((s) => ({ ...s, workout_session_id: sessionId }));
-            const r = await this.send(u, "POST /user/workout/sets/batch", "POST", "/user/workout/sets/batch", { sets: batch });
+            const r = await this.send<SetsBatchResult>(u, "POST /user/workout/sets/batch", "POST", "/user/workout/sets/batch", { sets: batch });
             if (r.status !== 200 && r.status !== 201) {
                 queue.unshift(...batch); // retried on the next flush, like the app's queue
                 return;
@@ -457,7 +469,7 @@ export class Visits {
                 await sleep(inRange(w.restSeconds) * 1000);
             }
             if (chance(w.adhocExerciseShare) && started) {
-                const lib = await this.get(u, "GET /user/exercises", "/user/exercises?page=1&limit=30");
+                const lib = await this.get<Listing<WithId>>(u, "GET /user/exercises", "/user/exercises?page=1&limit=30");
                 const ex = pick(list(lib.data));
                 if (ex) {
                     await this.screen();
@@ -480,7 +492,7 @@ export class Visits {
             counters.workoutsFinished++;
             await Promise.all([
                 this.get(u, "GET /user/workout/sessions/:id/detail", `/user/workout/sessions/${sessionId}/detail`),
-                this.get(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=3"),
+                this.get<Listing<PersonalRecord>>(u, "GET /user/workout/stats/recent-prs", "/user/workout/stats/recent-prs?limit=3"),
             ]);
             await this.screen();
         }

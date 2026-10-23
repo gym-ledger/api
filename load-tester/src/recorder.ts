@@ -16,7 +16,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { Config, VisitKind } from "./config.js";
 import type { RateNow } from "./schedule.js";
 import {
-    addCounts, type Counters, type Counts, diffCounters, EndpointStats, type EndpointJson, emptyCounts,
+    addCounts, type Counters, type Counts, type HistJson, diffCounters, EndpointStats, type EndpointJson, emptyCounts,
     errorRate, Histogram, latency, newCounters, type Outcome, Window,
 } from "./stats.js";
 import { activeVisits, counters, gauges, type RunEvent } from "./runtime.js";
@@ -41,8 +41,58 @@ export interface RunMeta {
     tickSeconds: number;
 }
 
+type Latency = ReturnType<typeof latency>;
+
+/** One line of ticks/<date>.ndjson. */
+export interface TickRecord {
+    t: number;
+    s: number;
+    want: number;
+    mul: number;
+    hr: number;
+    wd: string;
+    stage: number | null;
+    act: number;
+    kinds: Record<string, number>;
+    sse: number;
+    inf: number;
+    lag: number;
+    rss: number;
+    c: Counts;
+    l: Latency;
+    k: Partial<Counters>;
+}
+
+/** One line of minutes/<date>.ndjson or hours/<date>.ndjson. */
+export interface BucketRecord {
+    t: number;
+    s: number;
+    c: Counts;
+    h: HistJson;
+    max: number;
+    g: GaugeSample;
+    gx: GaugeSample;
+    kinds: Record<string, number>;
+    k: Partial<Counters>;
+    e: Record<string, EndpointJson>;
+}
+
+export type TimelineRecord = TickRecord | BucketRecord;
+
+/** status.json: the last tick, plus the run's live state. */
+export interface StatusFile extends TickRecord {
+    id: string;
+    status: RunStatus;
+    startedAt: number;
+    idleUsers: number;
+    rps: number;
+    thresholds: { minutes: number; n: number; p95: number; errorRate: number; breached: boolean };
+    counters: Counters;
+    totals: { c: Counts; l: Latency };
+}
+
 /** Gauges sampled each tick and averaged (and maxed) per minute and hour. */
-interface GaugeSample {
+export interface GaugeSample {
     want: number;
     act: number;
     sse: number;
@@ -72,7 +122,7 @@ class Bucket {
         for (const [k, n] of Object.entries(kinds)) this.kindSums[k] = (this.kindSums[k] ?? 0) + n;
     }
 
-    record(end: number) {
+    record(end: number): BucketRecord {
         const mean = (x: number) => (this.samples ? Math.round((x / this.samples) * 10) / 10 : 0);
         const avg = {} as GaugeSample;
         for (const k of GAUGES) avg[k] = mean(this.sums[k]);
@@ -224,7 +274,7 @@ export class Recorder {
         this.lag.reset();
         const act = activeVisits();
         const g: GaugeSample = { want: rate.visitsPerHour, act, sse: gauges.streamsOpen, inf: gauges.inFlight, lag: lagP99 };
-        const tick = {
+        const tick: TickRecord = {
             t: now,
             s: Math.round(seconds * 10) / 10,
             want: Math.round(rate.visitsPerHour * 10) / 10,
@@ -261,7 +311,7 @@ export class Recorder {
         }
 
         const thr = this.judge();
-        writeJsonAtomic(join(this.dir, "status.json"), {
+        const status: StatusFile = {
             id: this.meta.id,
             status: this.meta.status,
             startedAt: this.meta.startedAt,
@@ -271,7 +321,8 @@ export class Recorder {
             thresholds: thr,
             counters,
             totals: { c: this.totalCounts, l: latency(this.totalAll) },
-        });
+        };
+        writeJsonAtomic(join(this.dir, "status.json"), status);
         this.tick = new Window();
         this.tickK0 = { ...counters };
 

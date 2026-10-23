@@ -3,15 +3,17 @@
 // incrementally (only the bytes appended since the last read) and kept in a small cache.
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
-import type { RunMeta } from "../recorder.js";
+import type { BucketRecord, RunMeta, StatusFile, TickRecord, TimelineRecord } from "../recorder.js";
 import { listRunDirs, readJson } from "../recorder.js";
-import { addCounts, type Counts, emptyCounts, EndpointStats, type EndpointJson, errorRate, Histogram, type HistJson, latency } from "../stats.js";
+import { addCounts, type Counts, emptyCounts, EndpointStats, type EndpointJson, errorRate, Histogram, latency } from "../stats.js";
 
 type Kind = "ticks" | "minutes" | "hours";
+/** What each folder holds: ticks, or minute/hour buckets. */
+type RecordOf<K extends Kind> = K extends "ticks" ? TickRecord : BucketRecord;
 
 interface CachedFile {
     offset: number;
-    records: any[];
+    records: TimelineRecord[];
     used: number;
     partial: string;
 }
@@ -46,7 +48,7 @@ export class RunStore {
         if (!d) return null;
         const meta = readJson<RunMeta>(join(d, "run.json"));
         if (!meta) return null;
-        const status = readJson<any>(join(d, "status.json"));
+        const status = readJson<StatusFile>(join(d, "status.json"));
         const heartbeatMs = Math.max(30_000, meta.tickSeconds * 3000);
         const state = meta.status === "running" && (!status || Date.now() - status.t > heartbeatMs) ? "stale" : meta.status;
         const { config: _config, ...light } = meta;
@@ -65,14 +67,14 @@ export class RunStore {
         return d ? readJson<RunMeta>(join(d, "run.json")) : null;
     }
 
-    status(id: string): any {
+    status(id: string): StatusFile | null {
         const d = this.dir(id);
-        return d ? readJson(join(d, "status.json")) : null;
+        return d ? readJson<StatusFile>(join(d, "status.json")) : null;
     }
 
     // ── Reading the timeline files ───────────────────────────────────────────────────────
 
-    private read(id: string, kind: Kind, date: string): any[] {
+    private read(id: string, kind: Kind, date: string): TimelineRecord[] {
         const d = this.dir(id);
         if (!d) return [];
         const file = join(d, kind, `${date}.ndjson`);
@@ -117,14 +119,15 @@ export class RunStore {
         return c.records;
     }
 
-    private records(id: string, kind: Kind, from: number, to: number): any[] {
-        const out: any[] = [];
+    private records<K extends Kind>(id: string, kind: K, from: number, to: number): RecordOf<K>[] {
+        const out: TimelineRecord[] = [];
         const day = 86_400_000;
         for (let t = Math.floor(from / day) * day; t <= to; t += day) {
             const date = new Date(t).toISOString().slice(0, 10);
             for (const r of this.read(id, kind, date)) if (r.t >= from - 1 && r.t <= to) out.push(r);
         }
-        return out;
+        // Each folder only ever holds its own kind of record.
+        return out as RecordOf<K>[];
     }
 
     private span(id: string, fromQ: string | null, toQ: string | null) {
@@ -152,13 +155,13 @@ export class RunStore {
         const recs = this.records(id, kind, from, to);
         const step = Math.max(1, Math.ceil(recs.length / MAX_POINTS));
         const points = [];
-        for (let i = 0; i < recs.length; i += step) points.push(point(recs.slice(i, i + step), kind));
-        const all = point(recs, kind);
+        for (let i = 0; i < recs.length; i += step) points.push(point(recs.slice(i, i + step)));
+        const all = point(recs);
         if (kind === "ticks") {
             // Ticks only carry percentiles; the range's are exact from the minutes' histograms.
             const minutes = this.records(id, "minutes", from - 60_000, to);
             if (minutes.length) {
-                const exact = point(minutes, "minutes");
+                const exact = point(minutes);
                 Object.assign(all, { p50: exact.p50, p95: exact.p95, p99: exact.p99, max: exact.max });
             }
         }
@@ -257,12 +260,14 @@ export class RunStore {
 }
 
 /** Merges consecutive timeline records into one chart point. */
-function point(group: any[], kind: Kind) {
+function point(group: TimelineRecord[]) {
     const c: Counts = emptyCounts();
     const h = new Histogram();
     let s = 0;
     let gw = 0;
-    let weightedLat = { p50: 0, p95: 0, p99: 0 };
+    // Ticks carry percentiles only (merged count-weighted); buckets carry whole histograms.
+    let fromTicks = false;
+    const weightedLat = { p50: 0, p95: 0, p99: 0 };
     let maxLat = 0;
     const g = { want: 0, act: 0, sse: 0, inf: 0, lag: 0 };
     let actMax = 0;
@@ -276,7 +281,9 @@ function point(group: any[], kind: Kind) {
         gw += w;
         s += rs;
         addCounts(c, r.c);
-        if (kind === "ticks") {
+        for (const [kk, v] of Object.entries(r.kinds ?? {})) kinds[kk] = (kinds[kk] ?? 0) + v * w;
+        if ("l" in r) {
+            fromTicks = true;
             weightedLat.p50 += r.l.p50 * r.c.n;
             weightedLat.p95 += r.l.p95 * r.c.n;
             weightedLat.p99 += r.l.p99 * r.c.n;
@@ -288,19 +295,15 @@ function point(group: any[], kind: Kind) {
             g.lag += r.lag * w;
             actMax = Math.max(actMax, r.act);
             lagMax = Math.max(lagMax, r.lag);
-            for (const [kk, v] of Object.entries(r.kinds ?? {})) kinds[kk] = (kinds[kk] ?? 0) + (v as number) * w;
         } else {
-            h.merge(Histogram.fromJSON(r.h as HistJson, r.max));
+            h.merge(Histogram.fromJSON(r.h, r.max));
             for (const key of Object.keys(g) as (keyof typeof g)[]) g[key] += (r.g?.[key] ?? 0) * w;
             actMax = Math.max(actMax, r.gx?.act ?? 0);
             lagMax = Math.max(lagMax, r.gx?.lag ?? 0);
         }
-        if (kind !== "ticks") {
-            for (const [kk, v] of Object.entries(r.kinds ?? {})) kinds[kk] = (kinds[kk] ?? 0) + (v as number) * w;
-        }
-        for (const [kk, v] of Object.entries(r.k ?? {})) k[kk] = (k[kk] ?? 0) + (v as number);
+        for (const [kk, v] of Object.entries(r.k ?? {})) k[kk] = (k[kk] ?? 0) + v;
     }
-    const lat = kind === "ticks"
+    const lat = fromTicks
         ? {
             p50: c.n ? Math.round(weightedLat.p50 / c.n) : 0,
             p95: c.n ? Math.round(weightedLat.p95 / c.n) : 0,
