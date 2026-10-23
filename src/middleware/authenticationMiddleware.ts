@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { errors as joseErrors, jwtVerify } from "jose";
 import { UsersInterface } from "../db/schemas/users/users.schema.js";
 import { fetchUserForActiveSessionRepository } from "../modules/auth/userSessions.repository.js";
+import { isLoadTestEmail, loadTestAccountsOpenTo } from "./loadTestClient.js";
 import { isValidUUID } from "../utils/validation.js";
 import { AdminUserInterface } from "../db/schemas/admin/admin.schema.js";
 import { fetchAdminForActiveSessionRepository } from "../modules/admin/admin.auth/adminSessions.repository.js";
@@ -26,7 +27,8 @@ export const verifyUserToken = async (req: Request, res: Response, next: NextFun
             return res.status(401).json({ message: "Unauthorized" });
         }
         const user = await fetchUserForActiveSessionRepository(sub, sessionId) as UsersInterface | null;
-        if (!user) {
+        // Seeded load-test accounts: only the load tester, in production.
+        if (!user || (isLoadTestEmail(user.email) && !loadTestAccountsOpenTo(req))) {
             return res.status(401).json({ message: "Unauthorized" });
         }
         req.user = user;

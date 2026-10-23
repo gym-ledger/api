@@ -1,10 +1,12 @@
 import { rateLimit } from "express-rate-limit";
 
 import { RedisRateLimitStore } from "../infrastructure/redis/rateLimitStore.js";
+import { loadTestClientIp } from "./loadTestClient.js";
 
 // Counters live in Redis, so limits hold across API instances and restarts.
 // Limits are per client IP — set TRUST_PROXY_HOPS when behind a proxy, or
-// every client shares the proxy's bucket.
+// every client shares the proxy's bucket. Load-test requests (LOAD_TEST_SECRET)
+// count against the simulated user's IP instead.
 const createLimiter = ({
     name,
     windowMs,
@@ -24,6 +26,7 @@ const createLimiter = ({
     standardHeaders: "draft-7",
     legacyHeaders: false,
     store: new RedisRateLimitStore(name),
+    keyGenerator: (req) => loadTestClientIp(req) ?? req.ip ?? "",
     passOnStoreError: failOpen,
     handler: (_req, res) => {
         res.status(429).json({

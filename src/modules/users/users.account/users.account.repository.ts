@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { pg } from "../../../infrastructure/postgres/index.js";
+import { LOAD_TEST_EMAIL_DOMAIN } from "../../../config/constants.js";
 
 /** How long an account waits between asking for deletion and being deleted. */
 export const ACCOUNT_DELETION_GRACE_DAYS = 30;
@@ -285,6 +286,66 @@ const foldIntoAnonymousTotals = async (client: PoolClient, userId: string) => {
     `, [userId]);
 }
 
+/** Every row about the user, in foreign-key order, then the users row. Runs inside the caller's transaction. */
+const deleteAccountRows = async (
+    client: PoolClient,
+    userId: string,
+    identity: { email: string | null, phone_country_code: string | null, phone_number: string | null },
+) => {
+    const run = (sql: string) => client.query(sql, [userId]);
+    const { email, phone_country_code, phone_number } = identity;
+    const sessions = `SELECT id FROM workout_sessions WHERE user_id = $1`;
+    const versions = `SELECT id FROM workout_program_versions WHERE added_by_user_id = $1`;
+
+    // Workouts and everything hanging off them.
+    await run(`DELETE FROM workout_set_alarms WHERE user_id = $1`);
+    await run(`DELETE FROM workout_sets WHERE workout_session_id IN (${sessions})`);
+    await run(`UPDATE workout_program_exercises SET targets_from_workout_session_id = NULL WHERE targets_from_workout_session_id IN (${sessions})`);
+    await run(`DELETE FROM workout_program_exercises WHERE workout_session_id IN (${sessions})`);
+    await run(`DELETE FROM user_weekly_checkins WHERE user_id = $1`);
+    await run(`DELETE FROM workout_sessions WHERE user_id = $1`);
+    await run(`DELETE FROM user_program_assignments WHERE user_id = $1`);
+
+    // The user's own plan copies, and any plan row they added anywhere.
+    // (Rows must have exactly one creator, so they can't be kept without
+    // the user; users only ever add rows to their own copies anyway.)
+    await run(`DELETE FROM workout_program_exercises WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
+    await run(`DELETE FROM program_day_sessions WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
+    await run(`DELETE FROM program_days WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
+    await run(`DELETE FROM workout_program_versions WHERE added_by_user_id = $1`);
+    await run(`DELETE FROM workout_programs WHERE added_by_user_id = $1`);
+
+    // Body weight, settings and the rest.
+    for (const table of [
+        "user_muscle_signals",
+        "user_weight_moving_averages",
+        "user_weight_entries",
+        "user_weight_views",
+        "user_weight_goals",
+        "user_health_preferences",
+        "user_notifications",
+        "user_data_exports",
+        "user_sessions",
+    ]) {
+        await run(`DELETE FROM ${table} WHERE user_id = $1`);
+    }
+    // Usage counts stay for the daily AI limit; they hold no content.
+    await run(`UPDATE ai_requests SET user_id = NULL WHERE user_id = $1`);
+
+    // Sign-in codes are keyed by email / phone, not user id.
+    if (email) {
+        await client.query(`DELETE FROM otp_auth WHERE email = $1`, [email]);
+    }
+    if (phone_number) {
+        await client.query(
+            `DELETE FROM otp_auth WHERE phone_country_code = $1 AND phone_number = $2`,
+            [phone_country_code, phone_number],
+        );
+    }
+
+    await run(`DELETE FROM users WHERE id = $1`);
+}
+
 /**
  * Deletes an account whose deletion date has passed: first its training is
  * folded into the anonymous totals, then every row about the user is deleted,
@@ -294,7 +355,6 @@ const foldIntoAnonymousTotals = async (client: PoolClient, userId: string) => {
  */
 export const purgeAccountRepository = async (userId: string): Promise<boolean> => {
     const client = await pg.connect();
-    const run = (sql: string) => client.query(sql, [userId]);
     try {
         await client.query("BEGIN");
         // Locks the row, so a sign-in cancelling the deletion right now waits
@@ -312,57 +372,37 @@ export const purgeAccountRepository = async (userId: string): Promise<boolean> =
         const { email, phone_country_code, phone_number } = due.rows[0];
 
         await foldIntoAnonymousTotals(client, userId);
+        await deleteAccountRows(client, userId, { email, phone_country_code, phone_number });
+        await client.query("COMMIT");
+        return true;
+    } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
 
-        const sessions = `SELECT id FROM workout_sessions WHERE user_id = $1`;
-        const versions = `SELECT id FROM workout_program_versions WHERE added_by_user_id = $1`;
-
-        // Workouts and everything hanging off them.
-        await run(`DELETE FROM workout_set_alarms WHERE user_id = $1`);
-        await run(`DELETE FROM workout_sets WHERE workout_session_id IN (${sessions})`);
-        await run(`UPDATE workout_program_exercises SET targets_from_workout_session_id = NULL WHERE targets_from_workout_session_id IN (${sessions})`);
-        await run(`DELETE FROM workout_program_exercises WHERE workout_session_id IN (${sessions})`);
-        await run(`DELETE FROM user_weekly_checkins WHERE user_id = $1`);
-        await run(`DELETE FROM workout_sessions WHERE user_id = $1`);
-        await run(`DELETE FROM user_program_assignments WHERE user_id = $1`);
-
-        // The user's own plan copies, and any plan row they added anywhere.
-        // (Rows must have exactly one creator, so they can't be kept without
-        // the user; users only ever add rows to their own copies anyway.)
-        await run(`DELETE FROM workout_program_exercises WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
-        await run(`DELETE FROM program_day_sessions WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
-        await run(`DELETE FROM program_days WHERE workout_program_version_id IN (${versions}) OR added_by_user_id = $1`);
-        await run(`DELETE FROM workout_program_versions WHERE added_by_user_id = $1`);
-        await run(`DELETE FROM workout_programs WHERE added_by_user_id = $1`);
-
-        // Body weight, settings and the rest.
-        for (const table of [
-            "user_muscle_signals",
-            "user_weight_moving_averages",
-            "user_weight_entries",
-            "user_weight_views",
-            "user_weight_goals",
-            "user_health_preferences",
-            "user_notifications",
-            "user_data_exports",
-            "user_sessions",
-        ]) {
-            await run(`DELETE FROM ${table} WHERE user_id = $1`);
+/**
+ * Deletes a load-test account (seed-load-users.ts) and everything it wrote,
+ * without folding its training into the anonymous totals: it never was
+ * anyone's. Refuses any account outside the load-test email domain.
+ */
+export const purgeLoadTestAccountRepository = async (userId: string): Promise<boolean> => {
+    const client = await pg.connect();
+    try {
+        await client.query("BEGIN");
+        const found = await client.query(`
+        SELECT id, email, phone_country_code, phone_number
+        FROM users
+        WHERE id = $1 AND email LIKE $2
+        FOR UPDATE
+        `, [userId, `%@${LOAD_TEST_EMAIL_DOMAIN}`]);
+        if (!found.rowCount) {
+            await client.query("ROLLBACK");
+            return false;
         }
-        // Usage counts stay for the daily AI limit; they hold no content.
-        await run(`UPDATE ai_requests SET user_id = NULL WHERE user_id = $1`);
-
-        // Sign-in codes are keyed by email / phone, not user id.
-        if (email) {
-            await client.query(`DELETE FROM otp_auth WHERE email = $1`, [email]);
-        }
-        if (phone_number) {
-            await client.query(
-                `DELETE FROM otp_auth WHERE phone_country_code = $1 AND phone_number = $2`,
-                [phone_country_code, phone_number],
-            );
-        }
-
-        await run(`DELETE FROM users WHERE id = $1`);
+        await deleteAccountRows(client, userId, found.rows[0]);
         await client.query("COMMIT");
         return true;
     } catch (error) {

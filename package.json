@@ -8,6 +8,7 @@
     "migrate": "tsx src/scripts/run-migrations.ts",
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "seed:exercises": "tsx src/scripts/seed-exercises.ts",
+    "seed:load-users": "tsx src/scripts/seed-load-users.ts",
     "export:exercises": "tsx src/scripts/export-exercises.ts",
     "recompute:muscle-signals": "tsx src/scripts/recompute-muscle-signals.ts",
     "dev": "tsx watch src/server.ts",
