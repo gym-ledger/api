@@ -116,6 +116,84 @@ services:
     env_file:
       - .env
 
+  # ── Monitoring (optional; deployment/monitoring/MONITORING.md) ─────────────
+  # Started only with COMPOSE_PROFILES=monitoring in .env. Prometheus scrapes
+  # the API's metrics port over the Docker network; Grafana shows dashboards
+  # and sends alerts. Both listen on 127.0.0.1 only: open them through an
+  # SSH tunnel, Tailscale or Cloudflare Access, never a public port.
+  prometheus:
+    build:
+      context: ./deployment/monitoring/prometheus
+    container_name: gym-ledger-prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --storage.tsdb.retention.size=${PROMETHEUS_RETENTION_SIZE:-2GB}
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - app-network
+
+  grafana:
+    # Config is copied into the image (see its Dockerfile): the deploy's
+    # umask 077 checkout would be unreadable to Grafana as a bind mount.
+    build:
+      context: ./deployment/monitoring/grafana
+    container_name: gym-ledger-grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      # Only applied the first time Grafana starts (then it lives in
+      # grafana_data); change it later in Grafana or with grafana-cli.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3002}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      # Alert emails, e.g. through Resend's SMTP (user "resend", password =
+      # an API key). Alerting stays off while ALERT_EMAIL_TO is empty.
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+      GF_SMTP_ENABLED: ${GRAFANA_SMTP_ENABLED:-false}
+      GF_SMTP_HOST: ${GRAFANA_SMTP_HOST:-smtp.resend.com:587}
+      GF_SMTP_USER: ${GRAFANA_SMTP_USER:-resend}
+      GF_SMTP_PASSWORD: ${GRAFANA_SMTP_PASSWORD:-}
+      # A bare address; the name goes in GRAFANA_SMTP_FROM_NAME. Grafana
+      # refuses to start on a "Name <address>" value, even with SMTP off.
+      GF_SMTP_FROM_ADDRESS: ${GRAFANA_SMTP_FROM:-}
+      GF_SMTP_FROM_NAME: ${GRAFANA_SMTP_FROM_NAME:-Gym Ledger alerts}
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - app-network
+
+  # Optional: publishes Grafana at a hostname of yours through a Cloudflare
+  # Tunnel, behind a Cloudflare Access login. Needs both profiles:
+  # COMPOSE_PROFILES=monitoring,cloudflare-tunnel (MONITORING.md).
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    container_name: gym-ledger-cloudflared
+    restart: unless-stopped
+    profiles: ["cloudflare-tunnel"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - grafana
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
@@ -123,3 +201,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

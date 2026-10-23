@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import * as pinoModule from "pino";
 import { env } from "./env.js";
 import { pinoHttp } from "pino-http";
@@ -45,6 +46,13 @@ export const logger = pinoFactory({
 // 2. The HTTP middleware instance
 export const httpLogger = pinoHttp({
     logger: logger,
+    // A UUID per request, sent back as X-Request-Id, so an error a user
+    // reports (or a row on the admin API page) can be matched to its log lines.
+    genReqId(_req, res) {
+        const id = randomUUID();
+        res.setHeader("X-Request-Id", id);
+        return id;
+    },
     serializers: {
         req(req) {
             // Only output req object details if it's an error

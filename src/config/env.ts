@@ -139,6 +139,25 @@ const envSchema = z.object({
     S3_PUBLIC_URL: optionalString.pipe(z.url().optional()).transform((v) => v?.replace(/\/+$/, "")),
     // MinIO and some others need path-style URLs (endpoint/bucket/key).
     S3_FORCE_PATH_STYLE: booleanFlag(false),
+
+    // Prometheus metrics (infrastructure/metrics). Served on their own port,
+    // never on PORT, so they are not reachable through the public API port.
+    // Keep METRICS_PORT unpublished in Docker; Prometheus scrapes it over
+    // the internal network.
+    METRICS_ENABLED: booleanFlag(true),
+    METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9464),
+    // Requests at or above this many ms are recorded in api_request_issues
+    // (errors are always recorded), for the admin API page.
+    REQUEST_LOG_SLOW_MS: z.coerce.number().int().min(1).default(500),
+    // api_request_issues rows older than this are deleted.
+    REQUEST_LOG_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
+    // Prometheus's HTTP API as the API reaches it (e.g. http://prometheus:9090
+    // in Docker). Unset = the admin API page shows only the error and
+    // slow-request log, without latency percentiles.
+    PROMETHEUS_URL: optionalString.pipe(z.url().optional()).transform((v) => v?.replace(/\/+$/, "")),
+    // Where an admin opens Grafana in a browser, shown as a link on the admin
+    // API page (e.g. http://localhost:3002 over an SSH tunnel). Optional.
+    GRAFANA_URL: optionalString.pipe(z.url().optional()).transform((v) => v?.replace(/\/+$/, "")),
 }).superRefine((env, ctx) => {
     const requireKey = (key: keyof typeof env, why: string) => {
         if (!env[key]) {

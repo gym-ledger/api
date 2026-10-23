@@ -19,6 +19,13 @@ export const pg = new Pool({
     connectionTimeoutMillis: 5000,
 });
 
+// An idle connection dropped by the server (restart, failover) is emitted
+// here; without a listener Node treats it as unhandled and exits the process.
+// The pool discards that connection and opens a new one when next needed.
+pg.on("error", (error) => {
+    logger.error({ error }, "Idle Postgres connection lost");
+});
+
 pg.on("connect", async (client) => {
     await client.query(`
         SET TIME ZONE 'UTC'

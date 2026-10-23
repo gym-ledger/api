@@ -1,0 +1,190 @@
+# Grafana-managed alerts, emailed to ALERT_EMAIL_TO over SMTP (GF_SMTP_*).
+# Copied into provisioning by entrypoint.sh only when ALERT_EMAIL_TO is set.
+# ${VAR} is expanded by Grafana from the container's environment.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: admin-email
+    receivers:
+      - uid: admin-email
+        type: email
+        settings:
+          addresses: ${ALERT_EMAIL_TO}
+          singleEmail: true
+
+policies:
+  - orgId: 1
+    receiver: admin-email
+    group_by: ["grafana_folder", "alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: api
+    folder: Gym Ledger
+    interval: 1m
+    rules:
+      - uid: api-down
+        title: API is down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min(up{job="api"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        for: 2m
+        # No series at all means Prometheus can't see the API either.
+        noDataState: Alerting
+        execErrState: Error
+        labels: { severity: critical }
+        annotations:
+          summary: Prometheus has not been able to scrape the API for 2 minutes.
+
+      - uid: api-5xx-rate
+        title: High server error rate (5xx)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              # Percent of requests answered 5xx over 5 minutes, only once
+              # there are at least 20 requests (one 500 at night isn't 100%).
+              expr: >-
+                (sum(rate(http_errors_total{status_code=~"5.."}[5m]))
+                  / sum(rate(http_request_duration_seconds_count[5m])) * 100)
+                and on() (sum(increase(http_request_duration_seconds_count[5m])) >= 20)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: critical }
+        annotations:
+          summary: "More than 2% of API requests have failed with 5xx for 5 minutes ({{ humanize $values.A.Value }}%)."
+
+      - uid: api-p95-slow
+        title: API is slow (p95 over 1s)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[10m])))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "95th percentile response time has been above 1s for 10 minutes ({{ humanize $values.A.Value }}s)."
+
+      - uid: api-event-loop-lag
+        title: Node event loop is blocked
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: max(nodejs_eventloop_lag_p99_seconds)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.2] }
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: "Event loop lag p99 has been above 200ms for 5 minutes: something is hogging the CPU or doing synchronous work."
+
+      - uid: api-db-pool-waiting
+        title: Requests are waiting for a database connection
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(pg_pool_connections{state="waiting"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: The Postgres pool has had queued requests for 5 minutes (pool exhausted or slow queries).
+
+      - uid: api-issue-log-dropping
+        title: Error/slow request log is dropping rows
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(api_request_issues_dropped_total[15m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels: { severity: warning }
+        annotations:
+          summary: Rows for api_request_issues were dropped in the last 15 minutes (database writes failing, or a flood of errors).

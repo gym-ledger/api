@@ -1,6 +1,7 @@
 import { logger } from "../config/logger.js";
 import { runAccountDeletionJob } from "./accountDeletion.js";
 import { runDataExportJob } from "./dataExport.js";
+import { purgeExpiredRequestIssues } from "../infrastructure/metrics/requestIssueLog.js";
 
 /**
  * Runs `job` now and then every `intervalMs`, never two runs of it at once.
@@ -28,4 +29,5 @@ const every = (name: string, intervalMs: number, job: () => Promise<void>) => {
 export const startBackgroundJobs = () => {
     every("data-export", 30_000, runDataExportJob);
     every("account-deletion", 60 * 60_000, runAccountDeletionJob);
+    every("api-request-issues-purge", 60 * 60_000, purgeExpiredRequestIssues);
 };

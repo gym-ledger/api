@@ -63,6 +63,10 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       # Self-hosted proof-of-work on "send code"; set none to switch it off.
       CAPTCHA_PROVIDER: ${CAPTCHA_PROVIDER:-altcha}
+      # Used by the admin panel's API page; Prometheus only runs with
+      # --profile monitoring (the page says so when it's not up).
+      PROMETHEUS_URL: http://prometheus:9090
+      GRAFANA_URL: http://localhost:${GRAFANA_PORT:-3002}
     ports:
       - "${API_PORT:-4000}:4000"
     depends_on:
@@ -101,6 +105,30 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  # Optional: docker compose -f stack/docker-compose.yml --profile monitoring up --build
+  prometheus:
+    build:
+      context: ../deployment/monitoring/prometheus
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  grafana:
+    build:
+      context: ../deployment/monitoring/grafana
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-local-grafana-password}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    ports:
+      - "${GRAFANA_PORT:-3002}:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:

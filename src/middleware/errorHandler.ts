@@ -47,8 +47,12 @@ const pgErrorCode = (error: unknown) => {
     return typeof code === "string" && code in PG_CLIENT_ERRORS ? code : null;
 };
 
-const sendError = (res: Response, statusCode: number, message: string, details: unknown = null) =>
-    res.status(statusCode).json({
+// res.locals.error* feed the request metrics and api_request_issues
+// (middleware/requestMetrics.ts); they never reach the client.
+const sendError = (res: Response, statusCode: number, message: string, details: unknown = null) => {
+    res.locals.errorType ??= codeFor(statusCode);
+    res.locals.errorMessage ??= message;
+    return res.status(statusCode).json({
         success: false,
         error: {
             type: codeFor(statusCode),
@@ -56,6 +60,7 @@ const sendError = (res: Response, statusCode: number, message: string, details: 
             details,
         },
     });
+}
 
 export function errorHandler(
     error: unknown,
@@ -71,6 +76,8 @@ export function errorHandler(
         logger.warn({ path: req.path, issues }, "Validation error");
         const first = issues[0];
         const message = first ? (first.path ? `${first.path}: ${first.message}` : first.message) : "Validation failed";
+        res.locals.errorType = "VALIDATION_ERROR";
+        res.locals.errorMessage = message;
         return res.status(400).json({
             success: false,
             error: {
@@ -119,6 +126,9 @@ export function errorHandler(
         },
         "Unhandled application error"
     );
+    // The real cause, for admins only (api_request_issues).
+    res.locals.errorMessage = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    res.locals.errorStack = error instanceof Error ? error.stack ?? null : null;
 
     // The raw message is only ever shown on a local development server; it
     // can name tables, constraints and file paths.

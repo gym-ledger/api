@@ -29,6 +29,7 @@ const createLimiter = ({
     keyGenerator: (req) => loadTestClientIp(req) ?? req.ip ?? "",
     passOnStoreError: failOpen,
     handler: (_req, res) => {
+        res.locals.errorType = "RATE_LIMITED";
         res.status(429).json({
             success: false,
             error: {

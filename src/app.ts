@@ -8,6 +8,7 @@ import { API_PREFIX } from "./config/constants.js";
 import { httpLogger } from "./config/logger.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { apiLimiter } from "./middleware/rateLimiters.js";
+import { requestMetrics } from "./middleware/requestMetrics.js";
 import { checkHealth } from "./infrastructure/health.js";
 import router from "./modules/index/index.routes.js";
 
@@ -19,6 +20,9 @@ const app = express();
 if (env.TRUST_PROXY_HOPS !== undefined) {
     app.set("trust proxy", env.TRUST_PROXY_HOPS);
 }
+
+// First, so request timings include every middleware after it.
+app.use(requestMetrics);
 
 app.use(helmet());
 // Only the configured front-ends may call the API from a browser, and with

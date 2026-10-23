@@ -1,0 +1,13 @@
+apiVersion: 1
+
+# Dashboards in deployment/monitoring/grafana/dashboards are loaded on start.
+# Edits made in the Grafana UI are not saved back to the repo: export the
+# JSON and replace the file to keep a change.
+providers:
+  - name: gym-ledger
+    folder: Gym Ledger
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
