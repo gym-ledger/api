@@ -1,0 +1,13 @@
+{
+  "name": "typical-day",
+  "description": "A normal day for 2,000 registered users: morning and evening gym peaks, quiet nights.",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 2000 },
+  "population": {
+    "dailyActiveShare": 0.35,
+    "visitsPerActiveUser": 1.8,
+    "timezone": "Asia/Kolkata"
+  },
+  "load": { "duration": "24h", "multiplier": 1 },
+  "thresholds": { "p95Ms": 800, "errorRate": 0.005, "windowMinutes": 5 }
+}

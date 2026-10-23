@@ -1,0 +1,25 @@
+{
+  "name": "breakpoint",
+  "description": "Steps the load up every 5 minutes until p95 or errors cross the limit, then stops: the last step before that is the capacity.",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 20000 },
+  "population": {
+    "hourlyCurve": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  },
+  "load": {
+    "stages": [
+      { "duration": "1m", "multiplier": 1 }, { "duration": "4m", "multiplier": 1 },
+      { "duration": "1m", "multiplier": 2 }, { "duration": "4m", "multiplier": 2 },
+      { "duration": "1m", "multiplier": 4 }, { "duration": "4m", "multiplier": 4 },
+      { "duration": "1m", "multiplier": 6 }, { "duration": "4m", "multiplier": 6 },
+      { "duration": "1m", "multiplier": 8 }, { "duration": "4m", "multiplier": 8 },
+      { "duration": "1m", "multiplier": 12 }, { "duration": "4m", "multiplier": 12 },
+      { "duration": "1m", "multiplier": 16 }, { "duration": "4m", "multiplier": 16 },
+      { "duration": "1m", "multiplier": 24 }, { "duration": "4m", "multiplier": 24 },
+      { "duration": "1m", "multiplier": 32 }, { "duration": "4m", "multiplier": 32 }
+    ],
+    "maxConcurrentVisits": 20000
+  },
+  "thresholds": { "p95Ms": 1000, "errorRate": 0.01, "windowMinutes": 3, "abortOnBreach": true },
+  "report": { "resume": false }
+}

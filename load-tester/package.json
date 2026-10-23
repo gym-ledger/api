@@ -1,0 +1,22 @@
+{
+  "name": "gym-ledger-load-tester",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Simulates real Gym Ledger users against the API and shows the runs in a local dashboard",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "load": "tsx src/cli.ts",
+    "ui": "tsx src/ui/server.ts",
+    "test": "node --test --import tsx src/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "tsx": "^4.22.1",
+    "typescript": "^6.0.3"
+  }
+}

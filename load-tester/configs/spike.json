@@ -1,0 +1,20 @@
+{
+  "name": "spike",
+  "description": "Normal load, then 8× for five minutes (a push notification, a viral post), then back: does it recover?",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 10000 },
+  "population": {
+    "hourlyCurve": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  },
+  "load": {
+    "stages": [
+      { "duration": "3m", "multiplier": 1 },
+      { "duration": "5m", "multiplier": 1 },
+      { "duration": "30s", "multiplier": 8 },
+      { "duration": "5m", "multiplier": 8 },
+      { "duration": "1m", "multiplier": 1 },
+      { "duration": "10m", "multiplier": 1 }
+    ]
+  },
+  "thresholds": { "p95Ms": 1500, "errorRate": 0.02, "windowMinutes": 2 }
+}
