@@ -14,6 +14,7 @@ import { responseSend } from '../../helpers/response-send.js';
 import { captcha } from "../../infrastructure/captcha/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../../utils/refreshTokenCookie.js";
+import { loadTestAccountsOpenTo } from "../../middleware/loadTestClient.js";
 
 /**
  * Moves the refresh token out of the JSON body and into the httpOnly cookie,
@@ -105,7 +106,7 @@ export const verifyOtpForPasswordReset = async (req: Request, res: Response, nex
 
 export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await resetPasswordService(req.body);
+        await resetPasswordService(req.body, loadTestAccountsOpenTo(req));
 
         responseSend(res, 200, "Password reset successfully. Please log in again", null);
     } catch (error) {
@@ -115,7 +116,7 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
 export const refreshTokens = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await refreshTokensService(readRefreshCookie(req, "user"));
+        const data = await refreshTokensService(readRefreshCookie(req, "user"), loadTestAccountsOpenTo(req));
 
         sendSession(res, "Tokens refreshed successfully", data);
     } catch (error) {

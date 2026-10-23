@@ -1,0 +1,17 @@
+{
+  "name": "smoke",
+  "description": "Five quiet minutes to check everything works end to end before a real run.",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 100 },
+  "population": {
+    "hourlyCurve": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  },
+  "behaviour": {
+    "thinkSeconds": [1, 4],
+    "workout": { "restSeconds": [5, 15], "setSeconds": [5, 10] }
+  },
+  "attacks": { "credentialStuffing": { "attemptsPerHour": 60 } },
+  "load": { "duration": "5m", "multiplier": 10, "rampUp": "30s" },
+  "thresholds": { "p95Ms": 1000, "errorRate": 0.01, "windowMinutes": 2 },
+  "report": { "resume": false }
+}

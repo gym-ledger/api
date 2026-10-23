@@ -17,6 +17,7 @@ import { logger } from "../../config/logger.js";
 import { claimOtpAttemptRepository } from "./auth.repository.js";
 import { deleteUserSessionRepository, fetchUserSessionByHashRepository, rotateUserSessionRepository } from "./userSessions.repository.js";
 import { REFRESH_REUSE_GRACE_MS } from "../../config/constants.js";
+import { isLoadTestEmail } from "../../middleware/loadTestClient.js";
 import { publishUserEvent } from "../../infrastructure/redis/userEvents.js";
 
 const OTP_TTL_MS = 1000 * 60 * 5;
@@ -385,7 +386,7 @@ export const verifyOtpForPasswordResetService = async (data: IdentityInput & { o
  * Step 3 of forgot-password. Sets the new password, burns the reset token,
  * and logs the user out of every existing session.
  */
-export const resetPasswordService = async (data: { resetToken: string, newPassword: string }) => {
+export const resetPasswordService = async (data: { resetToken: string, newPassword: string }, loadTestAccountsAllowed: boolean) => {
     const { resetToken, newPassword } = data ?? {};
     if (!resetToken || typeof resetToken !== "string") {
         throw new AppError("Reset token is required", 400);
@@ -400,7 +401,9 @@ export const resetPasswordService = async (data: { resetToken: string, newPasswo
         ],
         useSoftDelete: false,
     }) as (OtpAuthInterface & { phone_country_code: string | null, phone_number: string | null, email: string | null }) | null;
-    if (!otpObj || !otpObj.verified_at) {
+    // A load-test account's token can't exist outside the load tester (its
+    // codes are never sent there); refused all the same, before it is burned.
+    if (!otpObj || !otpObj.verified_at || (!loadTestAccountsAllowed && isLoadTestEmail(otpObj.email))) {
         throw new AppError("Invalid or expired reset token", 400);
     }
     // single-use: burn it before doing anything else
@@ -456,13 +459,20 @@ export const verifyAccountDeletionCodeService = async (user: UsersInterface, otp
     await deleteOtpObj(otpObj!);
 }
 
-export const refreshTokensService = async (refreshToken: string | undefined) => {
+/**
+ * `loadTestAccountsAllowed` false (production, not the load tester): a session
+ * of a seeded load-test account is refused like an unknown token.
+ */
+export const refreshTokensService = async (refreshToken: string | undefined, loadTestAccountsAllowed: boolean) => {
     // 401, not 400: the clients treat any non-401 failure as transient and keep the session.
     if (!refreshToken) {
         throw new AppError("Refresh token is required", 401);
     }
     const oldHash = hashToken(refreshToken);
     const sessionObj = await fetchUserSessionByHashRepository("refresh_token_hash", oldHash);
+    if (sessionObj && !loadTestAccountsAllowed && isLoadTestEmail(sessionObj.email)) {
+        throw new AppError("Invalid refresh token", 401);
+    }
     if (sessionObj) {
         if (sessionObj.expires_at < new Date()) {
             throw new AppError("Refresh token expired", 401);
@@ -491,7 +501,7 @@ export const refreshTokensService = async (refreshToken: string | undefined) => 
         // Another refresh with this same token won the race; it is now the
         // previous token, so the grace path below hands back the winner's.
     }
-    return await refreshWithPreviousToken(oldHash);
+    return await refreshWithPreviousToken(oldHash, loadTestAccountsAllowed);
 }
 
 /**
@@ -500,9 +510,10 @@ export const refreshTokensService = async (refreshToken: string | undefined) => 
  * or two tabs refreshing at once). After it, the old token showing up again
  * means it was likely copied, so the session is ended.
  */
-const refreshWithPreviousToken = async (oldHash: string) => {
+const refreshWithPreviousToken = async (oldHash: string, loadTestAccountsAllowed: boolean) => {
     const sessionObj = await fetchUserSessionByHashRepository("previous_refresh_token_hash", oldHash);
-    if (!sessionObj || sessionObj.revoked_at || sessionObj.expires_at < new Date()) {
+    if (!sessionObj || sessionObj.revoked_at || sessionObj.expires_at < new Date()
+        || (!loadTestAccountsAllowed && isLoadTestEmail(sessionObj.email))) {
         throw new AppError("Invalid refresh token", 401);
     }
     const withinGrace = !!sessionObj.rotated_at

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Load Tester</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/app.css">
+    <script>
+        // Theme before first paint: the saved choice, else the OS's.
+        try {
+            const t = localStorage.getItem("lt-theme");
+            if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        } catch {}
+    </script>
+</head>
+<body>
+    <header class="top">
+        <a class="brand" href="#/">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 17l5-6 4 4 6-8 3 4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Load tester</span>
+        </a>
+        <span class="top-sub" id="top-sub">Gym Ledger API</span>
+        <button class="icon-btn" id="theme" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="currentColor"/></svg>
+        </button>
+    </header>
+    <main id="app" class="page"></main>
+    <div id="tooltip" class="tooltip" role="status" hidden></div>
+    <script src="/app.js"></script>
+</body>
+</html>

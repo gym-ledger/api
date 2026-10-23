@@ -49,6 +49,19 @@ const envSchema = z.object({
         z.string().regex(/^[0-9]{6}$/, "must be exactly 6 digits").optional()
     ),
 
+    // Load testing (load-tester/). A request carrying this secret in
+    // X-Load-Test-Key is rate-limited by the simulated client IP it sends in
+    // X-Load-Test-Client-Ip, so one generator machine can play thousands of
+    // users. Allowed in production; anyone holding it picks their own
+    // rate-limit bucket, so keep it long, secret, and pair it with
+    // LOAD_TEST_SOURCE_IPS. Unset = the headers are ignored.
+    LOAD_TEST_SECRET: optionalString.pipe(z.string().min(32, "must be at least 32 characters").optional()),
+    // Comma-separated IPs (as req.ip sees them) the load-test headers are
+    // honoured from. Unset = from anywhere.
+    LOAD_TEST_SOURCE_IPS: optionalString.transform((v) =>
+        v ? v.split(",").map((ip) => ip.trim()).filter(Boolean) : []
+    ),
+
     // Comma-separated browser origins allowed to call the API, e.g.
     // "https://app.example.com,https://admin.example.com". Required in
     // production. Unset in development = any origin is allowed.

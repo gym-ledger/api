@@ -1,0 +1,18 @@
+{
+  "name": "peak-hour",
+  "description": "One hour held at the evening peak of 10,000 registered users (the busiest hour of a Monday), after a 5-minute ramp.",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 10000 },
+  "population": {
+    "//": "A flat curve, so the hour of day doesn't matter; the multiplier lifts the average hour to the peak one (≈2× for the default gym curve, ×1.2 for Monday).",
+    "hourlyCurve": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    "weekdayFactors": { "mon": 1, "tue": 1, "wed": 1, "thu": 1, "fri": 1, "sat": 1, "sun": 1 }
+  },
+  "load": {
+    "stages": [
+      { "duration": "5m", "multiplier": 2.4 },
+      { "duration": "60m", "multiplier": 2.4 }
+    ]
+  },
+  "thresholds": { "p95Ms": 800, "errorRate": 0.005, "windowMinutes": 5 }
+}

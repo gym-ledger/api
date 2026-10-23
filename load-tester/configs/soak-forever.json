@@ -1,0 +1,10 @@
+{
+  "name": "soak",
+  "description": "Runs until stopped: 5,000 users living their normal days and weeks. Watch for slow drifts: memory, latency creeping up as tables grow, connections leaking.",
+  "target": { "apiUrl": "https://api.example.com/api/v1" },
+  "users": { "count": 5000 },
+  "population": { "timezone": "Asia/Kolkata" },
+  "load": { "duration": "forever", "multiplier": 1 },
+  "thresholds": { "p95Ms": 800, "errorRate": 0.005, "windowMinutes": 10 },
+  "report": { "resume": true, "tickSeconds": 15 }
+}

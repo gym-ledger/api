@@ -1,0 +1,53 @@
+# Load generator + dashboard on the load-test VPS. From this folder:
+#
+#   cp .env.example .env                      # fill it in
+#   docker compose run --rm generator plan --config configs/soak-forever.json   # checks first
+#   docker compose up -d --build              # runs LOAD_CONFIG, restarts with the machine
+#   docker compose logs -f generator
+#
+# The dashboard listens on the VPS's localhost only. From your laptop:
+#   ssh -N -L 8099:127.0.0.1:8099 you@vps     then open http://localhost:8099
+#
+# Editing a config needs no rebuild (configs/ is mounted); `docker compose restart generator`.
+# An unfinished run of the same config resumes after a restart or reboot; `--new` starts over.
+name: gym-ledger-load-test
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: 10m, max-file: "5" }
+
+services:
+  generator:
+    build: .
+    image: gym-ledger-load-tester
+    entrypoint: ["node", "dist/cli.js"]
+    command: ["run", "--config", "${LOAD_CONFIG:-configs/soak-forever.json}"]
+    env_file: .env
+    volumes:
+      - ./configs:/app/configs:ro
+      - runs:/app/runs
+    # Forward SIGTERM to node, so a stop writes the run's final state.
+    init: true
+    stop_grace_period: 30s
+    restart: unless-stopped
+    # Every simulated user holds sockets (and a notification stream while in the app).
+    ulimits:
+      nofile: { soft: 65536, hard: 65536 }
+    logging: *logging
+
+  dashboard:
+    image: gym-ledger-load-tester
+    depends_on: [generator]
+    command: ["node", "dist/ui/server.js", "--dir", "/app/runs", "--host", "0.0.0.0", "--port", "8099"]
+    env_file: .env
+    volumes:
+      - runs:/app/runs:ro
+    ports:
+      # Bound to the VPS's loopback: reachable over an SSH tunnel, not from the internet.
+      - "127.0.0.1:${LOAD_UI_PORT:-8099}:8099"
+    init: true
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  runs:

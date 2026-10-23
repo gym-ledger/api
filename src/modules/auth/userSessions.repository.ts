@@ -7,9 +7,11 @@ export interface UserSessionRow {
     revoked_at: Date | null;
     rotated_token_enc: string | null;
     rotated_at: Date | null;
+    /** The user's, so callers can tell load-test accounts apart. */
+    email: string | null;
 }
 
-const SESSION_COLUMNS = "s.id, s.user_id, s.expires_at, s.revoked_at, s.rotated_token_enc, s.rotated_at";
+const SESSION_COLUMNS = "s.id, s.user_id, s.expires_at, s.revoked_at, s.rotated_token_enc, s.rotated_at, u.email";
 
 /**
  * The session whose current refresh token (`column` = refresh_token_hash) or

@@ -15,3 +15,10 @@ export const PRIVACY_POLICY_VERSION = "2026-10-23.1";
  * After it, the old token coming back ends the session as likely stolen.
  */
 export const REFRESH_REUSE_GRACE_MS = 60_000;
+
+/**
+ * Email domain of the accounts seed-load-users.ts creates for load testing
+ * (load-tester/). `.invalid` is reserved (RFC 2606): no real address uses it,
+ * so these accounts can always be told apart and purged.
+ */
+export const LOAD_TEST_EMAIL_DOMAIN = "loadtest.invalid";
