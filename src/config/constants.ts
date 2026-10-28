@@ -6,7 +6,7 @@ export const API_PREFIX = "/api/v1";
  * app shows; users accept both together. Bump it together with either page's
  * text there; every user is asked to accept again.
  */
-export const PRIVACY_POLICY_VERSION = "2026-10-23.1";
+export const PRIVACY_POLICY_VERSION = "2026-10-28.1";
 
 /**
  * How long a refresh token that was just swapped for a new one still works

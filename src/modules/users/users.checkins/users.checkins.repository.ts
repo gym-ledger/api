@@ -87,6 +87,75 @@ export const fetchWeekSetCountsRepository = async (
     }
 }
 
+export interface MuscleContractionRow {
+    muscle_id: string;
+    muscle_name: string;
+    exercise_name: string;
+    /** Rated working sets of this exercise in the 3 weeks ending week_end. */
+    rated_sets: number;
+    /** Of those, how many were logged in the week itself. */
+    week_rated_sets: number;
+    avg_contraction: number;
+}
+
+/**
+ * Contraction scores per (muscle, exercise) over this week and the 2 before,
+ * counting only exercises where the muscle is a main target (contribution
+ * >= minContribution). Main, non-warmup, rated sets only.
+ */
+export const fetchMuscleContractionRepository = async (
+    userId: string,
+    timezone: string,
+    weekStart: string,
+    weekEnd: string,
+    minContribution: number,
+): Promise<MuscleContractionRow[]> => {
+    const query = `
+    SELECT
+        m.id AS muscle_id,
+        m.name AS muscle_name,
+        e.name AS exercise_name,
+        COUNT(*) AS rated_sets,
+        COUNT(*) FILTER (WHERE (ws.created_at AT TIME ZONE $2)::date >= $3::date) AS week_rated_sets,
+        AVG(ws.contraction) AS avg_contraction
+    FROM workout_sets ws
+    INNER JOIN workout_sessions wsess ON wsess.id = ws.workout_session_id
+    INNER JOIN workout_program_exercises wpe ON wpe.id = ws.workout_program_exercise_id
+    INNER JOIN exercises e ON e.id = wpe.exercise_id
+    INNER JOIN exercise_muscles em
+        ON em.exercise_id = wpe.exercise_id
+        AND em.deleted_at IS NULL
+        AND em.contribution >= $5
+    INNER JOIN muscles m
+        ON m.id = em.muscle_id
+        AND m.deleted_at IS NULL
+        AND m.xp_enabled = TRUE
+    WHERE wsess.user_id = $1
+        AND ws.deleted_at IS NULL
+        AND wsess.deleted_at IS NULL
+        AND ws.is_warmup = FALSE
+        AND ws.parent_set_id IS NULL
+        AND ws.contraction IS NOT NULL
+        AND (ws.created_at AT TIME ZONE $2)::date BETWEEN ($3::date - 14) AND $4::date
+    GROUP BY m.id, m.name, e.id, e.name
+    `;
+    try {
+        const result = await pg.query(query, [userId, timezone, weekStart, weekEnd, minContribution]);
+        return result.rows.map((row) => ({
+            muscle_id: row.muscle_id,
+            muscle_name: row.muscle_name,
+            exercise_name: row.exercise_name,
+            rated_sets: Number(row.rated_sets),
+            week_rated_sets: Number(row.week_rated_sets),
+            avg_contraction: Number(row.avg_contraction),
+        }));
+    } catch (error) {
+        // console.log(query);
+        // console.log(error);
+        throw new AppError("Failed to summarise contraction scores", 500);
+    }
+}
+
 export interface MuscleWeekSetsRow {
     name: string;
     /** Sets this week, each weighted by the exercise's contribution to the muscle. */

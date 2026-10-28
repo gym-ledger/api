@@ -307,6 +307,7 @@ export const createWorkoutSet = async (req: Request, res: Response, next: NextFu
             effort: req.body.effort,
             discomfort_notes: req.body.discomfort_notes,
             is_warmup: req.body.is_warmup,
+            contraction: req.body.contraction,
             alarm_message: req.body.alarm_message,
             drop_sets: req.body.drop_sets,
         });
@@ -328,6 +329,7 @@ export const updateWorkoutSet = async (req: Request, res: Response, next: NextFu
             effort: req.body.effort,
             discomfort_notes: req.body.discomfort_notes,
             is_warmup: req.body.is_warmup,
+            contraction: req.body.contraction,
         });
         return responseSend(res, 200, "Set updated successfully", data);
     } catch (error) {
