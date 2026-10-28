@@ -12,6 +12,8 @@ export interface WorkoutSetsInterface {
     is_warmup: boolean;
     effort: string | null;
     discomfort_notes: string | null;
+    /** 0 = felt nothing, 1–5 = how well the muscle contracted. Main, non-warmup sets only. */
+    contraction: number | null;
     parent_set_id: string | null;
     drop_order: number | null;
     deleted_at: Date | null;

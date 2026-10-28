@@ -18,11 +18,16 @@ const setFields = {
 
 const dropSet = z.strictObject(setFields);
 
+// 0 = felt nothing, 1–5 = how well it contracted. Main sets only: one score
+// covers a set and its drops. Ignored on warmups (the service stores null).
+const contraction = z.number().int().min(0).max(5).nullish();
+
 const newSetFields = {
     ...setFields,
     workout_session_id: z.uuid(),
     workout_program_exercise_id: z.uuid(),
     is_warmup: z.boolean().nullish(),
+    contraction,
     alarm_message: z.string().max(500).nullish(),
     drop_sets: z.array(dropSet).max(20).nullish(),
 };
@@ -42,6 +47,7 @@ export const createSetsBatchBody = z.strictObject({
 export const updateSetBody = z.strictObject({
     ...setFields,
     is_warmup: z.boolean().nullish(),
+    contraction,
 });
 
 export const selectPlanBody = z.strictObject({

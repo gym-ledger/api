@@ -885,6 +885,7 @@ export interface ExerciseHistorySetRow {
     rir: number | null;
     effort: string | null;
     discomfort_notes: string | null;
+    contraction: number | null;
     alarm_message: string | null;
     is_warmup: boolean;
     parent_set_id: string | null;
@@ -952,6 +953,7 @@ export const fetchExerciseHistoryRepository = async (data: {
         ws.rir,
         ws.effort,
         ws.discomfort_notes,
+        ws.contraction,
         wsa.message AS alarm_message,
         ws.is_warmup,
         ws.parent_set_id,
@@ -997,6 +999,7 @@ export const fetchExerciseHistoryRepository = async (data: {
                 rir: row.rir,
                 effort: row.effort,
                 discomfort_notes: row.discomfort_notes,
+                contraction: row.contraction,
                 alarm_message: row.alarm_message,
                 is_warmup: row.is_warmup,
                 parent_set_id: row.parent_set_id,
@@ -1176,6 +1179,7 @@ export interface WorkoutSessionDetailSetRow {
     rir: number | null;
     effort: string | null;
     discomfort_notes: string | null;
+    contraction: number | null;
     created_at: Date;
     parent_set_id: string | null;
     drop_order: number | null;
@@ -1227,6 +1231,7 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
         ws.rir,
         ws.effort,
         ws.discomfort_notes,
+        ws.contraction,
         ws.created_at,
         ws.parent_set_id,
         ws.drop_order,
@@ -1286,6 +1291,7 @@ export const fetchWorkoutSessionDetailRepository = async (data: {
                 rir: row.rir,
                 effort: row.effort,
                 discomfort_notes: row.discomfort_notes,
+                contraction: row.contraction,
                 created_at: row.created_at,
                 parent_set_id: row.parent_set_id,
                 drop_order: row.drop_order,

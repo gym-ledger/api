@@ -1035,6 +1035,10 @@ const validateSetFields = (fields: {
     }
 }
 
+/** Contraction is only scored on working main sets; warmups store null. */
+const contractionFor = (contraction: number | null | undefined, isWarmup: boolean | null | undefined) =>
+    isWarmup ? null : contraction ?? null;
+
 /**
  * Inserts one "main" set row plus, if given, its dropset children
  * (`parent_set_id`/`drop_order` on each). `setOrder` is passed in rather than
@@ -1053,6 +1057,7 @@ const insertSetWithDropsets = async (params: {
     effort?: string | null,
     discomfort_notes?: string | null,
     is_warmup?: boolean | null,
+    contraction?: number | null,
     drop_sets?: DropSetInput[] | null,
 }): Promise<{ set: WorkoutSetsInterface, dropSets: WorkoutSetsInterface[] }> => {
     const {
@@ -1066,6 +1071,7 @@ const insertSetWithDropsets = async (params: {
         effort,
         discomfort_notes,
         is_warmup,
+        contraction,
         drop_sets,
     } = params;
 
@@ -1082,6 +1088,7 @@ const insertSetWithDropsets = async (params: {
             effort: effort || null,
             discomfort_notes: discomfort_notes || null,
             is_warmup: is_warmup ?? false,
+            contraction: contractionFor(contraction, is_warmup),
         },
     }) as WorkoutSetsInterface;
 
@@ -1123,6 +1130,7 @@ export const createWorkoutSetService = async (data: {
     effort?: string | null,
     discomfort_notes?: string | null,
     is_warmup?: boolean | null,
+    contraction?: number | null,
     alarm_message?: string | null,
     drop_sets?: DropSetInput[] | null,
 }) => {
@@ -1137,6 +1145,7 @@ export const createWorkoutSetService = async (data: {
         effort,
         discomfort_notes,
         is_warmup,
+        contraction,
         alarm_message,
         drop_sets,
     } = data;
@@ -1187,6 +1196,7 @@ export const createWorkoutSetService = async (data: {
         effort,
         discomfort_notes,
         is_warmup,
+        contraction,
         drop_sets,
     });
 
@@ -1227,8 +1237,9 @@ export const updateWorkoutSetService = async (data: {
     effort?: string | null,
     discomfort_notes?: string | null,
     is_warmup?: boolean | null,
+    contraction?: number | null,
 }) => {
-    const { userId, setId, weight, tool_weight, reps, rir, effort, discomfort_notes, is_warmup } = data;
+    const { userId, setId, weight, tool_weight, reps, rir, effort, discomfort_notes, is_warmup, contraction } = data;
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
@@ -1261,6 +1272,8 @@ export const updateWorkoutSetService = async (data: {
             effort: effort || null,
             discomfort_notes: discomfort_notes || null,
             is_warmup: is_warmup ?? false,
+            // A drop set shares its parent's score, so it never holds one.
+            contraction: set.parent_set_id ? null : contractionFor(contraction, is_warmup),
         },
         where: [{ field: "id", operator: "=", value: setId }],
     }) as WorkoutSetsInterface;
@@ -1293,6 +1306,7 @@ export interface BatchSetInput {
     effort?: string | null,
     discomfort_notes?: string | null,
     is_warmup?: boolean | null,
+    contraction?: number | null,
     alarm_message?: string | null,
     drop_sets?: DropSetInput[] | null,
 }
@@ -1351,6 +1365,7 @@ export const createWorkoutSetsBatchService = async (data: {
             effort,
             discomfort_notes,
             is_warmup,
+            contraction,
             alarm_message,
             drop_sets,
         } = item;
@@ -1413,6 +1428,7 @@ export const createWorkoutSetsBatchService = async (data: {
                 effort,
                 discomfort_notes,
                 is_warmup,
+                contraction,
                 drop_sets,
             });
 
