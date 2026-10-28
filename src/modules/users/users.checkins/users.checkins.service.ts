@@ -38,6 +38,7 @@ import {
     fetchExerciseWeekProgressRepository,
     fetchLastActivityRepository,
     makeWeeklyCheckinRetryDueRepository,
+    fetchMuscleContractionRepository,
     fetchMuscleWeekSetsRepository,
     saveSkippedWeeklyCheckinRepository,
     fetchWeekSessionSummaryRepository,
@@ -45,6 +46,7 @@ import {
     fetchWeeklyCheckinByIdRepository,
     fetchWeeklyCheckinRepository,
     fetchWeightEntriesBetweenRepository,
+    MuscleContractionRow,
 } from "./users.checkins.repository.js";
 
 // The web app keeps a copy of the check-in shapes below
@@ -89,6 +91,8 @@ export interface WeeklyCheckinStats {
     muscles: {
         most_trained: { name: string, sets: number }[];
         below_usual: { name: string, sets: number, usual_sets: number }[];
+        /** Absent on check-ins stored before contraction scores existed. */
+        low_contraction?: LowContractionMuscle[];
     };
     weight: {
         weigh_ins: number;
@@ -112,6 +116,137 @@ export interface WeeklyCheckinStats {
     };
 }
 
+// ---------------------------------------------------------------------------
+// Contraction (mind-muscle connection)
+// ---------------------------------------------------------------------------
+
+// A muscle is flagged when its rated working sets over this week and the 2
+// before average this or lower on the 0-5 scale (0 = felt nothing).
+const LOW_CONTRACTION_MAX_AVG = 2;
+const LOW_CONTRACTION_MIN_SETS = 6;
+// Only exercises where the muscle is a main target say anything about it.
+const LOW_CONTRACTION_MIN_CONTRIBUTION = 0.5;
+// An exercise needs this many rated sets before it's judged on its own.
+const LOW_CONTRACTION_MIN_EXERCISE_SETS = 2;
+const CONTRACTION_NOTIFICATION_GROUP = "muscle_contraction";
+
+/**
+ * single_exercise: only one exercise to go on, so it's form or the exercise.
+ * all_exercises: every exercise for the muscle feels weak, so most likely form / mind-muscle connection.
+ * some_exercises: low_exercises feel weak while better_exercise works, so swap them.
+ */
+export interface LowContractionMuscle {
+    name: string;
+    avg_contraction: number;
+    rated_sets: number;
+    pattern: "single_exercise" | "all_exercises" | "some_exercises";
+    low_exercises: string[];
+    better_exercise: string | null;
+}
+
+export const summariseLowContraction = (rows: MuscleContractionRow[]): LowContractionMuscle[] => {
+    const byMuscle = new Map<string, MuscleContractionRow[]>();
+    for (const row of rows) {
+        byMuscle.set(row.muscle_id, [...(byMuscle.get(row.muscle_id) ?? []), row]);
+    }
+
+    const flagged: LowContractionMuscle[] = [];
+    for (const exercises of byMuscle.values()) {
+        const ratedSets = exercises.reduce((sum, e) => sum + e.rated_sets, 0);
+        const weekRatedSets = exercises.reduce((sum, e) => sum + e.week_rated_sets, 0);
+        const avg = exercises.reduce((sum, e) => sum + e.avg_contraction * e.rated_sets, 0) / ratedSets;
+        // Enough scores to mean something, and still being trained this week.
+        if (ratedSets < LOW_CONTRACTION_MIN_SETS || weekRatedSets === 0 || avg > LOW_CONTRACTION_MAX_AVG) {
+            continue;
+        }
+
+        const judged = exercises.filter((e) => e.rated_sets >= LOW_CONTRACTION_MIN_EXERCISE_SETS);
+        const pool = (judged.length ? judged : exercises).sort((a, b) => a.avg_contraction - b.avg_contraction);
+        const low = pool.filter((e) => e.avg_contraction <= LOW_CONTRACTION_MAX_AVG);
+        const better = pool.filter((e) => e.avg_contraction > LOW_CONTRACTION_MAX_AVG);
+        const pattern = pool.length === 1 ? "single_exercise" : better.length === 0 ? "all_exercises" : "some_exercises";
+
+        flagged.push({
+            name: exercises[0].muscle_name,
+            avg_contraction: round1(avg),
+            rated_sets: ratedSets,
+            pattern,
+            low_exercises: low.slice(0, 3).map((e) => e.exercise_name),
+            better_exercise: better.length ? better[better.length - 1].exercise_name : null,
+        });
+    }
+
+    return flagged
+        .sort((a, b) => a.avg_contraction - b.avg_contraction || b.rated_sets - a.rated_sets)
+        .slice(0, MAX_LIST_ITEMS);
+}
+
+const fetchLowContraction = async (userId: string, timezone: string, weekStart: string) =>
+    summariseLowContraction(await fetchMuscleContractionRepository(
+        userId, timezone, weekStart, addDays(weekStart, 6), LOW_CONTRACTION_MIN_CONTRIBUTION,
+    ));
+
+/**
+ * Template notice (no model call) for weeks without an AI check-in, so a
+ * muscle that keeps feeling weak is still pointed out. At most one per week;
+ * a new one replaces the last.
+ */
+const postLowContractionNotification = async (userId: string, weekStart: string, muscles: LowContractionMuscle[]) => {
+    if (!muscles.length) {
+        return;
+    }
+    const [first, ...rest] = muscles;
+    const score = `${first.avg_contraction} out of 5`;
+    const lows = joinParts(first.low_exercises);
+    let body: string;
+    if (first.pattern === "all_exercises") {
+        body = `Your ${first.name} sets (${lows}) averaged ${score} for contraction over the last 3 weeks. `
+            + "Consider looking into form: a load you can control, a slower lowering and a squeeze at the top often help you feel it more.";
+    } else if (first.pattern === "some_exercises") {
+        body = `${lows} averaged ${score} for ${first.name} contraction over the last 3 weeks, while ${first.better_exercise} felt better. `
+            + `Consider an alternate exercise, or looking into form on ${first.low_exercises.length > 1 ? "them" : "it"}.`;
+    } else {
+        body = `Your ${first.name} sets on ${lows} averaged ${score} for contraction over the last 3 weeks. `
+            + "Consider looking into form or trying an alternate exercise.";
+    }
+    if (rest.length) {
+        body += ` Also low: ${joinParts(rest.map((m) => m.name))}.`;
+    }
+    body += " Feeling the target muscle work usually means a better growth stimulus.";
+
+    await postNotificationRepository({
+        userId,
+        type: "muscle_contraction_low",
+        groupKey: CONTRACTION_NOTIFICATION_GROUP,
+        dedupeKey: `${CONTRACTION_NOTIFICATION_GROUP}:${weekStart}:${muscles.map((m) => m.name).sort().join(",")}`,
+        title: `Not feeling it in your ${first.name}?`,
+        body,
+        link: "/exercises",
+    });
+}
+
+// Users with AI check-ins off reach this on every Home / notifications load,
+// so their scores are looked at no more than hourly per process.
+const CONTRACTION_RECHECK_MS = 60 * 60_000;
+const contractionCheckedAt = new Map<string, number>();
+
+const notifyLowContractionWithoutCheckin = async (userId: string, timezone: string, weekStart: string) => {
+    const key = `${userId}:${weekStart}`;
+    const last = contractionCheckedAt.get(key);
+    if (last && Date.now() - last < CONTRACTION_RECHECK_MS) {
+        return;
+    }
+    if (contractionCheckedAt.size > 10_000) {
+        contractionCheckedAt.clear();
+    }
+    contractionCheckedAt.set(key, Date.now());
+    try {
+        await postLowContractionNotification(userId, weekStart, await fetchLowContraction(userId, timezone, weekStart));
+    } catch (error) {
+        logger.error({ error }, "Failed to post low contraction notification");
+    }
+}
+
 const computeWeeklyCheckinStats = async (
     userId: string,
     timezone: string,
@@ -120,7 +255,7 @@ const computeWeeklyCheckinStats = async (
 ): Promise<WeeklyCheckinStats> => {
     const weekEnd = addDays(weekStart, 6);
 
-    const [sessions, setCounts, muscles, exercises, volumeSeries, weightEntries, goalRow, assignments] = await Promise.all([
+    const [sessions, setCounts, muscles, exercises, volumeSeries, weightEntries, goalRow, assignments, lowContraction] = await Promise.all([
         fetchWeekSessionSummaryRepository(userId, timezone, weekStart, weekEnd),
         fetchWeekSetCountsRepository(userId, timezone, weekStart, weekEnd),
         fetchMuscleWeekSetsRepository(userId, timezone, weekStart, weekEnd),
@@ -129,6 +264,7 @@ const computeWeeklyCheckinStats = async (
         fetchWeightEntriesBetweenRepository(userId, addDays(weekEnd, -27), weekEnd),
         fetchWeightGoalRepository(userId),
         fetchUserAssignmentsRepository({ userId, activeOnly: true }),
+        fetchLowContraction(userId, timezone, weekStart),
     ]);
 
     // Same "required weekday" rule as the dashboard's week strip.
@@ -231,7 +367,7 @@ const computeWeeklyCheckinStats = async (
             volume_change_vs_usual_pct: volumeUsual > 0 ? pctChange(volumeUsual, volume) : null,
         },
         exercises: { prs, stalled },
-        muscles: { most_trained: mostTrained, below_usual: belowUsual },
+        muscles: { most_trained: mostTrained, below_usual: belowUsual, low_contraction: lowContraction },
         weight: {
             weigh_ins: thisWeekWeights.length,
             weigh_in_days: new Set(weightEntries.filter((e) => e.date >= weekStart).map((e) => e.date)).size,
@@ -311,6 +447,7 @@ Rules:
 - Food advice only when pace_status is behind, too_fast, wrong_direction, drifting_up or drifting_down, and only as a small daily change of 100 to 250 kcal in the needed direction. Never give a total calorie target. Never mention medication, supplements, fasting, diets by name or any extreme method.
 - Training advice must be small and concrete, for example one or two extra sets for a muscle in muscles.below_usual, a lighter week or a different rep range for a lift in exercises.stalled, or getting the planned sessions done. Do not prescribe new programs.
 - If training.sets_with_discomfort is above 0, mention easing off or checking form on those lifts, and seeing a professional if pain continues. Never diagnose.
+- muscles.low_contraction lists muscles whose sets the user rated as poorly felt over the last 3 weeks (contraction is 0 to 5; 0 means they felt nothing). Frame it as getting a better growth stimulus, never as failing. By pattern: all_exercises: suggest looking into form and mind-muscle connection (a load they can control, slower lowering, a squeeze at peak contraction). some_exercises: suggest replacing low_exercises with an alternate exercise or checking form on them, noting better_exercise felt better. single_exercise: suggest checking form or trying an alternate exercise.
 - If sessions_completed is 0, be encouraging and not guilt-tripping, and suggest one easy session to restart.
 - Voice: direct and warm, like a good coach texting. Second person. No emoji, no hype words, at most one exclamation mark.
 
@@ -318,7 +455,7 @@ Output:
 - headline: at most 8 words.
 - summary: 2 or 3 sentences, at most 60 words, covering training and body weight.
 - wins: 0 to 3 items, each at most 15 words. Only real wins from the data (PRs, planned sessions done, volume up, weight on track).
-- focus: 1 or 2 items for next week, each a different change. title at most 6 words; detail at most 30 words saying exactly what to do. Pick them in this order of priority, skipping what doesn't apply: discomfort, body-weight pace, missed planned sessions, stalled lifts, muscles below usual.`;
+- focus: 1 or 2 items for next week, each a different change. title at most 6 words; detail at most 30 words saying exactly what to do. Pick them in this order of priority, skipping what doesn't apply: discomfort, body-weight pace, missed planned sessions, low contraction, stalled lifts, muscles below usual.`;
 
 /**
  * The only data that leaves the server for the model provider. The stored
@@ -522,14 +659,17 @@ export const getWeeklyCheckinService = async (userId?: string) => {
     if (!userId) {
         throw new AppError("User ID is required", 400);
     }
-    // Opt-in: no row, no "get AI insights" notices, no model call.
-    if (!await isAiCheckinsEnabledService(userId)) {
-        return { status: "disabled" as const, checkin: null };
-    }
+    const aiEnabled = await isAiCheckinsEnabledService(userId);
     const { timezone, weight_units } = await getUserHealthPreferencesOrDefault(userId);
     const todayStr = localDateString(new Date(), timezone);
     const currentWeekStart = addDays(todayStr, -(isoWeekdayOf(todayStr) - 1));
     const weekStart = addDays(currentWeekStart, -7);
+    // Opt-in: no row, no "get AI insights" notices, no model call. The
+    // contraction notice is a server-side template, so it still applies.
+    if (!aiEnabled) {
+        await notifyLowContractionWithoutCheckin(userId, timezone, weekStart);
+        return { status: "disabled" as const, checkin: null };
+    }
     return resolveWeeklyCheckin(userId, weekStart, timezone, weight_units);
 }
 
@@ -598,6 +738,11 @@ const resolveWeeklyCheckin = async (
                 await postCheckinSkippedNotification(userId, stats, reasons);
             } catch (error) {
                 logger.error({ error }, "Failed to post weekly check-in notification");
+            }
+            try {
+                await postLowContractionNotification(userId, weekStart, stats.muscles.low_contraction ?? []);
+            } catch (error) {
+                logger.error({ error }, "Failed to post low contraction notification");
             }
             return respond(skipped);
         }
