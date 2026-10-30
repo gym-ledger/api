@@ -48,10 +48,11 @@ if ! bash "$dir/deploy.sh" >"$log" 2>&1; then
     exit 1
 fi
 
-# deploy.sh pulls the branch tip; make sure it includes the pushed commit.
+# deploy.sh pulls the tip of the branch the server is checked out on; make
+# sure it includes the pushed commit.
 head="$(git -C "$dir" rev-parse HEAD)"
 if ! git -C "$dir" merge-base --is-ancestor "$sha" "$head"; then
-    echo "The server is at ${head:0:7}, which doesn't include ${sha:0:7}. Is the server checked out on main?"
+    echo "The server is on $(git -C "$dir" symbolic-ref --short HEAD) at ${head:0:7}, which doesn't include ${sha:0:7}. Was it pushed to a branch this server doesn't deploy?"
     exit 1
 fi
 echo "Deployed in $((SECONDS - started))s. $target is now at ${head:0:7}."

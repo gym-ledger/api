@@ -3,9 +3,12 @@
 # (.github/workflows/deploy.yml in each of the three repos). Run as root:
 #
 #   bash deployment/ci/setup-server.sh --host <IP or hostname GitHub connects to> \
-#       [--port 22] [--api DIR] [--app DIR] [--admin DIR]
+#       [--environment production|qa] [--port 22] [--api DIR] [--app DIR] [--admin DIR]
 #
 # The repo folders default to this repo and its siblings web and admin.
+# --environment is the GitHub environment this server deploys: production
+# (the default) deploys main, qa deploys the qa branch. A server deploys the
+# branch its repo folders are checked out on, so they must be on that branch.
 # Re-running is safe; it makes new keys, so the
 # DEPLOY_SSH_KEY secrets in GitHub must then be updated too.
 #
@@ -27,12 +30,14 @@ APP_DIR="$(dirname "$API_DIR")/web"
 ADMIN_DIR="$(dirname "$API_DIR")/admin"
 HOST=""
 PORT=22
+ENVIRONMENT=production
 DEPLOY_USER=deploy
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --host) HOST="${2:-}"; shift 2 ;;
         --port) PORT="${2:-}"; shift 2 ;;
+        --environment) ENVIRONMENT="${2:-}"; shift 2 ;;
         --api) API_DIR="${2:-}"; shift 2 ;;
         --app) APP_DIR="${2:-}"; shift 2 ;;
         --admin) ADMIN_DIR="${2:-}"; shift 2 ;;
@@ -41,6 +46,11 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$HOST" ]] || { echo "Pass --host <the IP or hostname GitHub should connect to>" >&2; exit 1; }
 [[ "$PORT" =~ ^[0-9]+$ ]] || { echo "--port must be a number" >&2; exit 1; }
+case "$ENVIRONMENT" in
+    production) BRANCH=main ;;
+    qa) BRANCH=qa ;;
+    *) echo "--environment must be production or qa" >&2; exit 1 ;;
+esac
 
 TARGETS=(api app admin)
 declare -A DIRS=([api]="$API_DIR" [app]="$APP_DIR" [admin]="$ADMIN_DIR")
@@ -53,7 +63,12 @@ for t in "${TARGETS[@]}"; do
         echo "  $t: no git repo with deploy.sh in $d. Pass --$t <folder>." >&2
         exit 1
     fi
-    echo "  $t: $d (branch $(git -C "$d" symbolic-ref --short HEAD))"
+    branch="$(git -C "$d" symbolic-ref --short HEAD)"
+    echo "  $t: $d (branch $branch)"
+    if [[ "$branch" != "$BRANCH" ]]; then
+        echo "  $t is on $branch, but $ENVIRONMENT deploys $BRANCH: git -C $d checkout $BRANCH" >&2
+        exit 1
+    fi
 done
 
 echo "==> Can the server fetch from GitHub on its own (without your SSH session)?"
@@ -121,7 +136,7 @@ for t in "${TARGETS[@]}"; do
     clear 2>/dev/null || true
     cat <<EOF
 ================ ${REPOS[$t]} ================
-GitHub: ${REPOS[$t]} > Settings > Environments > production > Environment secrets
+GitHub: ${REPOS[$t]} > Settings > Environments > $ENVIRONMENT > Environment secrets
 
 DEPLOY_HOST
 $HOST

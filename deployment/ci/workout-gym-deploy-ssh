@@ -5,7 +5,7 @@
 #
 # The target is fixed by the key, and the only thing a caller can send is a
 # commit id. A leaked key can do nothing but redeploy what is already on
-# that repo's main branch on GitHub.
+# GitHub, on the branch that server is checked out on.
 set -euo pipefail
 
 target="${1:-}"

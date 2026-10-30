@@ -1,42 +1,47 @@
-# Deploys to the VPS when main is pushed. The same file is in all three repos;
-# which repo gets deployed is fixed on the server by the SSH key each repo
-# holds (see deployment/ci/setup-server.sh in gym-ledger/api).
+# Deploys when main or qa is pushed: main goes to the production server, qa
+# to the QA server. The same file is in all three repos; which repo gets
+# deployed is fixed on each server by the SSH key each repo holds (see
+# deployment/ci/setup-server.sh in gym-ledger/api).
 #
 # Needs, in this repo's settings:
 #   Variables (Secrets and variables > Actions > Variables):
 #     DEPLOY_ENABLED = true    the on/off switch; anything else skips deploys
-#     DEPLOY_HEALTH_URL        a page that answers once the new version is up
-#   Environment "production" (deployments from main only), with secrets:
-#     DEPLOY_HOST, DEPLOY_PORT, DEPLOY_KNOWN_HOSTS, DEPLOY_SSH_KEY
+#   Environments "production" (deployments from main only) and "qa"
+#   (deployments from qa only), each with its own server's values:
+#     variable DEPLOY_HEALTH_URL   a page that answers once the new version is up
+#     secrets  DEPLOY_HOST, DEPLOY_PORT, DEPLOY_KNOWN_HOSTS, DEPLOY_SSH_KEY
 name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, qa]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Never two deploys of this repo at once; a newer push waits its turn.
+# Never two deploys of this repo to the same server at once; a newer push
+# waits its turn.
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     # Only the owner's pushes deploy. GitHub authenticates who pushed
     # (github.actor); a commit's author name and email are not checked by
-    # anyone, so they aren't what decides this. Forks never deploy.
+    # anyone, so they aren't what decides this. Forks never deploy, and
+    # neither does a manual run from any other branch.
     if: >-
       vars.DEPLOY_ENABLED == 'true' &&
+      (github.ref_name == 'main' || github.ref_name == 'qa') &&
       github.repository_owner == 'gym-ledger' &&
       github.actor == 'itsmohitchahal' &&
       github.triggering_actor == 'itsmohitchahal'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     environment:
-      name: production
+      name: ${{ github.ref_name == 'main' && 'production' || 'qa' }}
       url: ${{ vars.DEPLOY_HEALTH_URL }}
     steps:
       - name: Deploy on the server
