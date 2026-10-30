@@ -193,9 +193,11 @@ export const fetchUserDataForExportRepository = async (userId: string) => {
             notifications: await all(`SELECT * FROM user_notifications WHERE user_id = $1 ORDER BY created_at`),
             ai_requests: await all(`SELECT * FROM ai_requests WHERE user_id = $1 ORDER BY created_at`),
             // What the privacy policy lists; internal fields (stack traces,
-            // request ids) stay out.
+            // request ids) stay out. A 5xx row's message is the raw internal
+            // error (admins only), so it is exported as the reply the user got.
             failed_and_slow_requests: await all(`
-                SELECT created_at, method, path, status_code, duration_ms, error_type, error_message
+                SELECT created_at, method, path, status_code, duration_ms, error_type,
+                       CASE WHEN status_code >= 500 THEN 'Something went wrong' ELSE error_message END AS error_message
                 FROM api_request_issues WHERE user_id = $1 ORDER BY created_at`),
             signed_in_devices: await all(`SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY created_at`),
             data_exports: await all(`SELECT id, status, requested_at, completed_at, expires_at FROM user_data_exports WHERE user_id = $1 ORDER BY requested_at`),
