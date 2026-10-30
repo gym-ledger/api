@@ -11,10 +11,12 @@ const REDACTED_PATHS = [
     "req.headers.authorization",
     "req.headers.cookie",
     'req.headers["refresh-token"]',
+    'req.headers["x-load-test-key"]',
     'res.headers["set-cookie"]',
     "headers.authorization",
     "headers.cookie",
     'headers["refresh-token"]',
+    'headers["x-load-test-key"]',
 ];
 
 // 1. Core Pino Instance
