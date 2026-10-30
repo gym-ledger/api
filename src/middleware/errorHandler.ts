@@ -105,11 +105,19 @@ export function errorHandler(
         return sendError(res, error.code === "LIMIT_FILE_SIZE" ? 413 : 400, error.message);
     }
 
-    // Body-parser errors (malformed JSON, body too large) carry their own 4xx status.
-    const status = (error as { status?: unknown, expose?: unknown })?.status;
-    if (typeof status === "number" && status >= 400 && status < 500 && (error as { expose?: unknown }).expose) {
-        logger.warn({ path: req.path, status }, "Bad request body");
-        return sendError(res, status, status === 413 ? "Request body is too large" : "Request body is not valid JSON");
+    // Body-parser errors (malformed JSON, body too large, compressed body)
+    // carry their own 4xx status.
+    const { status, expose, type } = (error ?? {}) as { status?: unknown, expose?: unknown, type?: unknown };
+    if (typeof status === "number" && status >= 400 && status < 500 && expose) {
+        logger.warn({ path: req.path, status, type }, "Bad request body");
+        const message = status === 413
+            ? "Request body is too large"
+            : type === "encoding.unsupported"
+                ? "Compressed request bodies are not accepted"
+                : type === "charset.unsupported"
+                    ? "Request body must be UTF-8"
+                    : "Request body is not valid JSON";
+        return sendError(res, status, message);
     }
 
     const pgCode = pgErrorCode(error);

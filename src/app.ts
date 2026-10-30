@@ -33,7 +33,10 @@ app.use(cors({
     credentials: true,
 }));
 app.use(compression());
-app.use(express.json());
+// No client sends compressed request bodies, so they are refused (415)
+// rather than inflated: decompression is pre-auth work anyone can trigger.
+// The limit is the default, spelled out so it can't widen unnoticed.
+app.use(express.json({ limit: "100kb", inflate: false }));
 
 
 app.use(httpLogger as unknown as express.RequestHandler);
