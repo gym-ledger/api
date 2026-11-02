@@ -143,9 +143,9 @@ const withoutSecrets = (rows: Record<string, unknown>[]) =>
 
 /**
  * Everything stored about a user, for their data export: the account,
- * settings, body weight, goals, plans they own, every workout and set, check-
- * ins, notifications and signed-in devices. Secrets (password and token
- * hashes) are left out.
+ * settings, body weight, goals, plans they own, every workout and set, days
+ * off, check-ins, notifications and signed-in devices. Secrets (password and
+ * token hashes) are left out.
  */
 export const fetchUserDataForExportRepository = async (userId: string) => {
     const client = await pg.connect();
@@ -187,6 +187,7 @@ export const fetchUserDataForExportRepository = async (userId: string) => {
                     WHERE s.user_id = $1
                     ORDER BY ws.created_at`),
                 alarms: await all(`SELECT * FROM workout_set_alarms WHERE user_id = $1 ORDER BY created_at`),
+                days_off: await all(`SELECT to_char(day, 'YYYY-MM-DD') AS day, category, note, created_at, updated_at FROM user_days_off WHERE user_id = $1 ORDER BY day`),
                 muscle_signals: await all(`SELECT * FROM user_muscle_signals WHERE user_id = $1`),
             },
             weekly_checkins: await all(`SELECT * FROM user_weekly_checkins WHERE user_id = $1 ORDER BY created_at`),
@@ -325,6 +326,7 @@ const deleteAccountRows = async (
     // Body weight, settings and the rest.
     for (const table of [
         "user_muscle_signals",
+        "user_days_off",
         "user_weight_moving_averages",
         "user_weight_entries",
         "user_weight_views",
