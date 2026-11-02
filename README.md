@@ -85,6 +85,21 @@ The same code that logs you in creates your account the first time.
 
 This setup is for trying the project and for development only: it runs with `NODE_ENV=development`, fixed secrets and plain http. To run it on a server, use the deployment guide below.
 
+### Without Docker
+
+To run only the API against a Postgres and Redis you already have (for example native ones in
+WSL), copy `.env.development.example` to `.env`, point `DATABASE_*` and `REDIS_URL` at them, then:
+
+```bash
+npm run migrate          # apply the SQL migrations
+npm run seed:admin       # first admin (admin@admin.com outside production)
+npm run seed:exercises   # exercise library
+npm run seed:dev         # demo plan + demo@local.test with 6 weeks of workouts (refuses in production)
+npm run dev              # http://localhost:4000/api/v1
+```
+
+With `MASTER_LOGIN_OTP` set in `.env`, any account signs in with that code after requesting one.
+
 ### Exercise library
 
 `seeds/exercises.json` holds the public exercise library (exercises, muscles and how much each exercise works each muscle). To load it into a database yourself, or to refresh the file from one:
