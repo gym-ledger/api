@@ -9,6 +9,7 @@
     "seed:admin": "tsx src/scripts/seed-admin.ts",
     "seed:exercises": "tsx src/scripts/seed-exercises.ts",
     "seed:load-users": "tsx src/scripts/seed-load-users.ts",
+    "seed:dev": "tsx src/scripts/seed-dev-data.ts",
     "export:exercises": "tsx src/scripts/export-exercises.ts",
     "recompute:muscle-signals": "tsx src/scripts/recompute-muscle-signals.ts",
     "dev": "tsx watch src/server.ts",
@@ -18,8 +19,8 @@
     "clean": "rm -rf dist",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test": "vitest",
-    "test:watch": "vitest --watch"
+    "test": "node --test --import tsx \"src/**/*.test.ts\"",
+    "test:watch": "node --test --watch --import tsx \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1143.0",

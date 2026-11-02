@@ -2,6 +2,9 @@ import { batchSetItem } from "./users.workout.schemas.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../utils/validation.js";
 import { resolveSupportedTimezone } from "../../../utils/timezone.js";
+import { addDays, isoWeekdayOf } from "../../../utils/dates.js";
+import { DAY_OFF_WINDOW_DAYS, isCountedDayOff, protectedDaysOff } from "../users.daysOff/daysOff.rules.js";
+import { fetchDaysOffBetweenRepository } from "../users.daysOff/users.daysOff.repository.js";
 import { addOneInTable, fetchManyFromTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { EXERCISES_TABLE, ExercisesInterface } from "../../../db/schemas/exercises/exercises.schema.js";
 import { PROGRAM_DAYS_TABLE, ProgramDaysInterface } from "../../../db/schemas/workoutPrograms/programDays.schema.js";
@@ -1638,19 +1641,8 @@ export const localDateString = (date: Date, timezone: string): string => {
     }
 }
 
-/** 1=Mon..7=Sun for a "YYYY-MM-DD" date string. */
-export const isoWeekdayOf = (dateStr: string): number => {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-    return day === 0 ? 7 : day;
-}
-
-export const addDays = (dateStr: string, delta: number): string => {
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    dt.setUTCDate(dt.getUTCDate() + delta);
-    return dt.toISOString().slice(0, 10);
-}
+// Moved to utils/dates.ts; re-exported for the modules that import them from here.
+export { addDays, isoWeekdayOf };
 
 /**
  * Current streak + this week's trained/not-trained days.
@@ -1662,11 +1654,15 @@ export const addDays = (dateStr: string, delta: number): string => {
  * days don't break the streak. Today, if required but not yet satisfied,
  * doesn't break the streak either — it's just not counted yet.
  *
+ * A required, untrained day the user marked as a day off (user_days_off)
+ * bridges the streak — it neither breaks nor extends it — as long as it is
+ * within the 10-in-30-days allowance (daysOff.rules.ts). Past that, the day
+ * off is still shown but breaks the streak like any missed day.
+ *
  * Known limitation: there's no history of which plans were active on a past
  * date, only current `is_active` state — the walk applies the user's
  * *current* active plans' schedules retroactively across the whole
- * lookback window. A future "mark a sick/injury day" feature would need its
- * own exceptions table; not built here.
+ * lookback window.
  */
 export const getWorkoutConsistencyService = async (userId?: string) => {
     if (!userId) {
@@ -1694,13 +1690,30 @@ export const getWorkoutConsistencyService = async (userId?: string) => {
     }
 
     const sinceStr = earliestStartStr && earliestStartStr < weekStartStr ? earliestStartStr : weekStartStr;
-    const workedOutDates = new Set(await fetchWorkedOutDatesRepository(userId, timezone, sinceStr));
+    // Days off from a window earlier: they use up the allowance of the first days in range.
+    const daysOffSince = addDays(sinceStr, -(DAY_OFF_WINDOW_DAYS - 1));
+    const [worked, dayOffRows] = await Promise.all([
+        fetchWorkedOutDatesRepository(userId, timezone, daysOffSince),
+        fetchDaysOffBetweenRepository(userId, daysOffSince, weekDates[6]),
+    ]);
+    const workedOutDates = new Set(worked);
+    const daysOff = new Map(dayOffRows.map((r) => [r.day, r]));
+    const countedDaysOff = new Set(
+        dayOffRows.filter((r) => isCountedDayOff(r.day, requiredWeekdays, workedOutDates)).map((r) => r.day),
+    );
+    const protectedDays = protectedDaysOff(countedDaysOff);
 
-    const week = weekDates.map((date) => ({
-        date,
-        trained: workedOutDates.has(date),
-        required: requiredWeekdays.has(isoWeekdayOf(date)),
-    }));
+    const week = weekDates.map((date) => {
+        const dayOff = countedDaysOff.has(date) ? daysOff.get(date)! : null;
+        return {
+            date,
+            trained: workedOutDates.has(date),
+            required: requiredWeekdays.has(isoWeekdayOf(date)),
+            day_off: dayOff
+                ? { category: dayOff.category, note: dayOff.note, protects_streak: protectedDays.has(date) }
+                : null,
+        };
+    });
 
     if (activeAssignments.length === 0 || !earliestStartStr) {
         return { current_streak: 0, week };
@@ -1713,6 +1726,8 @@ export const getWorkoutConsistencyService = async (userId?: string) => {
         if (requiredWeekdays.has(isoWeekdayOf(cursor))) {
             if (workedOutDates.has(cursor)) {
                 streak++;
+            } else if (protectedDays.has(cursor)) {
+                // A day off within the allowance: bridge it.
             } else if (!isToday) {
                 break;
             }
