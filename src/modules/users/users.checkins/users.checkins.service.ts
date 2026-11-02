@@ -4,6 +4,9 @@ import { AppError } from "../../../shared/errors/AppError.js";
 import { isValidUUID } from "../../../utils/validation.js";
 import { generateStructuredJson, isLlmConfigured, LlmUnavailableError } from "../../../infrastructure/groq/index.js";
 import { UserWeeklyCheckinsInterface } from "../../../db/schemas/users/checkins/userWeeklyCheckins.schema.js";
+import type { DayOffCategory } from "../../../db/schemas/users/workout/userDaysOff.schema.js";
+import { isCountedDayOff } from "../users.daysOff/daysOff.rules.js";
+import { fetchDaysOffBetweenRepository } from "../users.daysOff/users.daysOff.repository.js";
 import {
     assessWeightPace,
     isWeightGoalPreset,
@@ -74,8 +77,15 @@ export interface WeeklyCheckinStats {
         sessions_completed: number;
         /** Distinct days with a completed workout. */
         days_trained: number;
+        /** Planned training days this week, minus the ones taken off. */
         planned_sessions: number;
         planned_days_trained: number;
+        /**
+         * Planned, untrained days the user marked as a day off, by reason
+         * (categories only; notes never leave the server). Absent on
+         * check-ins stored before days off existed.
+         */
+        days_off?: { count: number, by_category: Partial<Record<DayOffCategory, number>> };
         avg_session_minutes: number | null;
         working_sets: number;
         sets_with_discomfort: number;
@@ -273,6 +283,17 @@ const computeWeeklyCheckinStats = async (
     );
     const plannedDaysTrained = sessions.dates.filter((d) => requiredWeekdays.has(isoWeekdayOf(d))).length;
 
+    // Planned days the user took off aren't missed sessions. Only the
+    // categories are kept here — never the user's note.
+    const trainedDates = new Set(sessions.dates);
+    const daysOffByCategory: Partial<Record<DayOffCategory, number>> = {};
+    let plannedDaysOff = 0;
+    for (const row of await fetchDaysOffBetweenRepository(userId, weekStart, weekEnd)) {
+        if (!isCountedDayOff(row.day, requiredWeekdays, trainedDates)) continue;
+        plannedDaysOff++;
+        daysOffByCategory[row.category] = (daysOffByCategory[row.category] ?? 0) + 1;
+    }
+
     const volumeByWeek = new Map(volumeSeries.map((w) => [w.week_start, w.volume]));
     const volume = volumeByWeek.get(weekStart) ?? 0;
     const priorVolumes = [1, 2, 3, 4].map((i) => volumeByWeek.get(addDays(weekStart, -7 * i)) ?? 0);
@@ -356,8 +377,9 @@ const computeWeeklyCheckinStats = async (
         training: {
             sessions_completed: sessions.sessions,
             days_trained: sessions.dates.length,
-            planned_sessions: requiredWeekdays.size,
+            planned_sessions: Math.max(0, requiredWeekdays.size - plannedDaysOff),
             planned_days_trained: plannedDaysTrained,
+            days_off: { count: plannedDaysOff, by_category: daysOffByCategory },
             avg_session_minutes: sessions.avg_duration_seconds != null ? Math.round(sessions.avg_duration_seconds / 60) : null,
             working_sets: setCounts.working_sets,
             sets_with_discomfort: setCounts.sets_with_discomfort,
@@ -448,6 +470,7 @@ Rules:
 - Training advice must be small and concrete, for example one or two extra sets for a muscle in muscles.below_usual, a lighter week or a different rep range for a lift in exercises.stalled, or getting the planned sessions done. Do not prescribe new programs.
 - If training.sets_with_discomfort is above 0, mention easing off or checking form on those lifts, and seeing a professional if pain continues. Never diagnose.
 - muscles.low_contraction lists muscles whose sets the user rated as poorly felt over the last 3 weeks (contraction is 0 to 5; 0 means they felt nothing). Frame it as getting a better growth stimulus, never as failing. By pattern: all_exercises: suggest looking into form and mind-muscle connection (a load they can control, slower lowering, a squeeze at peak contraction). some_exercises: suggest replacing low_exercises with an alternate exercise or checking form on them, noting better_exercise felt better. single_exercise: suggest checking form or trying an alternate exercise.
+- training.days_off counts planned days the user chose to take off, by reason (sick, injury, low_energy, sore, travel, work, family, other); planned_sessions already leaves them out, so they are not missed sessions. Never criticise them. If the reason is sick or injury, wish them a good recovery and suggest easing back in; for low_energy or sore, mention sleep and recovery. Do not guess beyond the reason.
 - If sessions_completed is 0, be encouraging and not guilt-tripping, and suggest one easy session to restart.
 - Voice: direct and warm, like a good coach texting. Second person. No emoji, no hype words, at most one exclamation mark.
 

@@ -143,9 +143,9 @@ const withoutSecrets = (rows: Record<string, unknown>[]) =>
 
 /**
  * Everything stored about a user, for their data export: the account,
- * settings, body weight, goals, plans they own, every workout and set, check-
- * ins, notifications and signed-in devices. Secrets (password and token
- * hashes) are left out.
+ * settings, body weight, goals, plans they own, every workout and set, days
+ * off, check-ins, notifications and signed-in devices. Secrets (password and
+ * token hashes) are left out.
  */
 export const fetchUserDataForExportRepository = async (userId: string) => {
     const client = await pg.connect();
@@ -187,15 +187,18 @@ export const fetchUserDataForExportRepository = async (userId: string) => {
                     WHERE s.user_id = $1
                     ORDER BY ws.created_at`),
                 alarms: await all(`SELECT * FROM workout_set_alarms WHERE user_id = $1 ORDER BY created_at`),
+                days_off: await all(`SELECT to_char(day, 'YYYY-MM-DD') AS day, category, note, created_at, updated_at FROM user_days_off WHERE user_id = $1 ORDER BY day`),
                 muscle_signals: await all(`SELECT * FROM user_muscle_signals WHERE user_id = $1`),
             },
             weekly_checkins: await all(`SELECT * FROM user_weekly_checkins WHERE user_id = $1 ORDER BY created_at`),
             notifications: await all(`SELECT * FROM user_notifications WHERE user_id = $1 ORDER BY created_at`),
             ai_requests: await all(`SELECT * FROM ai_requests WHERE user_id = $1 ORDER BY created_at`),
             // What the privacy policy lists; internal fields (stack traces,
-            // request ids) stay out.
+            // request ids) stay out. A 5xx row's message is the raw internal
+            // error (admins only), so it is exported as the reply the user got.
             failed_and_slow_requests: await all(`
-                SELECT created_at, method, path, status_code, duration_ms, error_type, error_message
+                SELECT created_at, method, path, status_code, duration_ms, error_type,
+                       CASE WHEN status_code >= 500 THEN 'Something went wrong' ELSE error_message END AS error_message
                 FROM api_request_issues WHERE user_id = $1 ORDER BY created_at`),
             signed_in_devices: await all(`SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY created_at`),
             data_exports: await all(`SELECT id, status, requested_at, completed_at, expires_at FROM user_data_exports WHERE user_id = $1 ORDER BY requested_at`),
@@ -323,6 +326,7 @@ const deleteAccountRows = async (
     // Body weight, settings and the rest.
     for (const table of [
         "user_muscle_signals",
+        "user_days_off",
         "user_weight_moving_averages",
         "user_weight_entries",
         "user_weight_views",

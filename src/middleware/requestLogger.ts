@@ -2,6 +2,9 @@ import { pinoHttp } from "pino-http";
 
 import { logger } from "../config/logger.js";
 
+// Not mounted (app.ts uses httpLogger from config/logger.ts). Never log
+// req.body here: it carries passwords, OTPs and reset tokens. Headers go
+// through the logger's redaction list (REDACTED_PATHS).
 export const requestLogger = pinoHttp({
     logger,
 
@@ -18,7 +21,6 @@ export const requestLogger = pinoHttp({
             return {
                 method: req.method,
                 url: req.url,
-                body: req.body,
                 headers: req.headers,
             };
         },

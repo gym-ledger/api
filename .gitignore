@@ -15,3 +15,7 @@ run.local.sh
 
 algorithms
 docs
+
+# Notes for AI coding agents, kept local
+CLAUDE.md
+AGENTS.md

@@ -7,6 +7,7 @@ import usersMuscleSignalsRouter from './users.muscleSignals/users.muscleSignals.
 import usersCheckinsRouter from './users.checkins/users.checkins.routes.js';
 import usersNotificationsRouter from './users.notifications/users.notifications.routes.js';
 import usersAccountRouter from './users.account/users.account.routes.js';
+import usersDaysOffRouter from './users.daysOff/users.daysOff.routes.js';
 
 const usersRouter = Router();
 
@@ -18,4 +19,5 @@ usersRouter.use("/muscle-signals", usersMuscleSignalsRouter);
 usersRouter.use("/checkins", usersCheckinsRouter);
 usersRouter.use("/notifications", usersNotificationsRouter);
 usersRouter.use("/account", usersAccountRouter);
+usersRouter.use("/days-off", usersDaysOffRouter);
 export default usersRouter;
