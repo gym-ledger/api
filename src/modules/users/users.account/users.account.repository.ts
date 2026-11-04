@@ -144,7 +144,7 @@ const withoutSecrets = (rows: Record<string, unknown>[]) =>
 /**
  * Everything stored about a user, for their data export: the account,
  * settings, body weight, goals, plans they own, every workout and set, days
- * off, check-ins, notifications and signed-in devices. Secrets (password and
+ * off, check-ins, consents, notifications and signed-in devices. Secrets (password and
  * token hashes) are left out.
  */
 export const fetchUserDataForExportRepository = async (userId: string) => {
@@ -190,6 +190,8 @@ export const fetchUserDataForExportRepository = async (userId: string) => {
                 days_off: await all(`SELECT to_char(day, 'YYYY-MM-DD') AS day, category, note, created_at, updated_at FROM user_days_off WHERE user_id = $1 ORDER BY day`),
                 muscle_signals: await all(`SELECT * FROM user_muscle_signals WHERE user_id = $1`),
             },
+            // What you agreed to and when (terms + privacy versions, AI check-in opt-in/out).
+            consents: await all(`SELECT kind, action, version, source, created_at FROM user_consents WHERE user_id = $1 ORDER BY created_at`),
             weekly_checkins: await all(`SELECT * FROM user_weekly_checkins WHERE user_id = $1 ORDER BY created_at`),
             notifications: await all(`SELECT * FROM user_notifications WHERE user_id = $1 ORDER BY created_at`),
             ai_requests: await all(`SELECT * FROM ai_requests WHERE user_id = $1 ORDER BY created_at`),
@@ -327,6 +329,7 @@ const deleteAccountRows = async (
     for (const table of [
         "user_muscle_signals",
         "user_days_off",
+        "user_consents",
         "user_weight_moving_averages",
         "user_weight_entries",
         "user_weight_views",

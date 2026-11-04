@@ -1,7 +1,10 @@
+import type { PoolClient } from "pg";
 import { pg } from "../../../infrastructure/postgres/index.js";
 import { AppError } from "../../../shared/errors/AppError.js";
 import { CustomPaceUnit, WeightGoal, WeightGoalPace } from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import { WeightGoalEndStatus } from "../../../utils/users/users.weightGoal.utils.js";
+import type { UsersInterface } from "../../../db/schemas/users/users.schema.js";
+import type { ConsentAction, ConsentKind, ConsentSource } from "../../../db/schemas/users/userConsents.schema.js";
 
 export interface CurrentBodyWeight {
     /** Mean of the weigh-ins in the 7 days up to the latest one — smooths day-to-day water swings. */
@@ -224,3 +227,83 @@ export const fetchWeightGoalHistoryRepository = async (userId: string, limit: nu
         throw new AppError("Failed to fetch weight goal history", 500);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Consents: users holds the latest state, user_consents the history (045).
+// Both are written in one transaction so they can't disagree.
+// ---------------------------------------------------------------------------
+
+type PgClient = PoolClient;
+
+const insertConsent = (client: PgClient, row: {
+    userId: string,
+    kind: ConsentKind,
+    action: ConsentAction,
+    version: string,
+    source: ConsentSource,
+}) => client.query(
+    `INSERT INTO user_consents (user_id, kind, action, version, source) VALUES ($1, $2, $3, $4, $5)`,
+    [row.userId, row.kind, row.action, row.version, row.source],
+);
+
+const acceptPolicy = async (client: PgClient, userId: string, version: string, source: ConsentSource) => {
+    await client.query(
+        `UPDATE users SET privacy_policy_version = $2, privacy_policy_accepted_at = NOW(), updated_at = NOW() WHERE id = $1`,
+        [userId, version],
+    );
+    await insertConsent(client, { userId, kind: "privacy_policy", action: "accepted", version, source });
+};
+
+const inTransaction = async <T>(fn: (client: PgClient) => Promise<T>): Promise<T> => {
+    const client = await pg.connect();
+    try {
+        await client.query("BEGIN");
+        const out = await fn(client);
+        await client.query("COMMIT");
+        return out;
+    } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+/** Records that the user accepted `version` of the terms + privacy policy. */
+export const acceptPolicyRepository = (userId: string, version: string, source: ConsentSource): Promise<UsersInterface> =>
+    inTransaction(async (client) => {
+        await acceptPolicy(client, userId, version, source);
+        const { rows } = await client.query(`SELECT * FROM users WHERE id = $1`, [userId]);
+        return rows[0] as UsersInterface;
+    });
+
+/**
+ * Turns AI check-ins on or off and logs it. `alsoAcceptPolicy` records the
+ * current policy as accepted in the same step (the consent sheet says so).
+ */
+export const setAiCheckinsRepository = (userId: string, data: {
+    enabled: boolean,
+    version: string,
+    source: ConsentSource,
+    alsoAcceptPolicy: boolean,
+}): Promise<UsersInterface> =>
+    inTransaction(async (client) => {
+        if (data.alsoAcceptPolicy) await acceptPolicy(client, userId, data.version, data.source);
+        const { rows } = await client.query(
+            `UPDATE users
+            SET ai_checkins_enabled = $2,
+                ai_checkins_consented_at = CASE WHEN $2 THEN NOW() ELSE NULL END,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *`,
+            [userId, data.enabled],
+        );
+        await insertConsent(client, {
+            userId,
+            kind: "ai_checkins",
+            action: data.enabled ? "accepted" : "withdrawn",
+            version: data.version,
+            source: data.source,
+        });
+        return rows[0] as UsersInterface;
+    });

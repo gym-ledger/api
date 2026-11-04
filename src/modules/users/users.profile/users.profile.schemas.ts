@@ -42,11 +42,15 @@ export const changePasswordBody = z.strictObject({
 
 export const acceptPrivacyPolicyBody = z.strictObject({
     version: text(20),
+    /** "prompt" = the accept screen (default), "notice" = dismissed a "policy updated" notice. */
+    source: z.enum(["prompt", "notice"]).optional(),
 });
 
 export const setAiCheckinsBody = z.strictObject({
     enabled: z.boolean(),
     consent: z.boolean().optional(),
+    /** The current policy version, when the consent sheet's checkbox also accepts it. */
+    policy_version: text(20).optional(),
 });
 
 // Pace, target and dates are checked against each other in the service.

@@ -1,4 +1,4 @@
-import { PRIVACY_POLICY_VERSION } from "../../config/constants.js";
+import { CURRENT_POLICY, needsPolicyReconsent, policyVersionsSince } from "../../config/policyVersions.js";
 import { UsersInterface } from "../../db/schemas/users/users.schema.js";
 
 /**
@@ -15,9 +15,20 @@ export const toPublicUser = (user: UsersInterface) => ({
     phone_number: user.phone_number ?? null,
     has_password: !!user.password_hash,
     onboarded_at: user.onboarded_at ?? null,
-    // false = the web app asks the user to accept the current policy first.
-    privacy_policy_accepted: user.privacy_policy_version === PRIVACY_POLICY_VERSION,
-    current_privacy_policy_version: PRIVACY_POLICY_VERSION,
+    // false = the web app asks the user to accept the current policy first:
+    // never accepted, or a newer version is material for them (policyVersions.ts).
+    privacy_policy_accepted: !needsPolicyReconsent(user.privacy_policy_version ?? null, !!user.ai_checkins_enabled),
+    current_privacy_policy_version: CURRENT_POLICY.version,
+    // Set when a newer version exists than the one they accepted: what changed
+    // since. With privacy_policy_accepted true, the app shows a dismissible notice.
+    privacy_policy_update: user.privacy_policy_version && user.privacy_policy_version !== CURRENT_POLICY.version
+        ? {
+            version: CURRENT_POLICY.version,
+            effective_date: CURRENT_POLICY.effective_date,
+            changes: policyVersionsSince(user.privacy_policy_version)
+                .map(({ version, effective_date, summary }) => ({ version, effective_date, summary })),
+        }
+        : null,
     ai_checkins_enabled: !!user.ai_checkins_enabled,
     // Set = the account is deleted on this date; the web app then asks
     // whether to cancel that or sign out again.

@@ -2,11 +2,10 @@
 export const API_PREFIX = "/api/v1";
 
 /**
- * Version of the terms of use (/terms) and privacy policy (/privacy) the web
- * app shows; users accept both together. Bump it together with either page's
- * text there; every user is asked to accept again.
+ * The current terms + privacy policy version. Defined in policyVersions.ts:
+ * add a version THERE (with its `reconsent` scope) when either text changes.
  */
-export const PRIVACY_POLICY_VERSION = "2026-11-02.1";
+export { PRIVACY_POLICY_VERSION } from "./policyVersions.js";
 
 /**
  * How long a refresh token that was just swapped for a new one still works
