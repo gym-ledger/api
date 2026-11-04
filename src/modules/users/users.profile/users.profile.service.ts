@@ -7,7 +7,7 @@ import {
 } from "../../../db/schemas/users/userHealthPreferences.schema.js";
 import { USERS_TABLE, UsersInterface } from "../../../db/schemas/users/users.schema.js";
 import { AppError } from "../../../shared/errors/AppError.js";
-import { PRIVACY_POLICY_VERSION } from "../../../config/constants.js";
+import { PRIVACY_POLICY_VERSION, needsPolicyReconsent } from "../../../config/policyVersions.js";
 import { resolveSupportedTimezone } from "../../../utils/timezone.js";
 import { addOneInTable, fetchOneFromTable, updateOneInTable } from "../../index/index.repository.js";
 import { hashPassword, validateNewPassword, verifyPassword } from "../../../utils/authentication.js";
@@ -45,6 +45,8 @@ import {
     WeightGoalEntry,
     WeightGoalFields,
     WeightGoalRow,
+    acceptPolicyRepository,
+    setAiCheckinsRepository,
 } from "./users.profile.repository.js";
 
 const NAME_MAX_LENGTH = 100;
@@ -243,65 +245,63 @@ export const skipOnboardingService = async ({ userId }: { userId: string }) => {
 }
 
 /**
- * Records that the user accepted the privacy policy. `version` must be the
- * one the app showed them, so a stale page can't accept a newer policy.
+ * Records that the user accepted the terms + privacy policy, from the accept
+ * screen ("prompt") or by dismissing a "policy updated" notice ("notice").
+ * `version` must be the one the app showed them, so a stale page can't
+ * accept a newer policy. Logged in user_consents (see policyVersions.ts).
  */
 export const acceptPrivacyPolicyService = async ({
     userId,
     data,
 }: {
     userId: string;
-    data: { version?: unknown };
+    data: { version?: unknown; source?: "prompt" | "notice" };
 }) => {
     if (data?.version !== PRIVACY_POLICY_VERSION) {
         throw new AppError("Please review the latest privacy policy and accept it again", 409);
     }
-    await fetchUserOrThrow(userId);
-    const user = await updateOneInTable({
-        table: USERS_TABLE,
-        data: {
-            privacy_policy_version: PRIVACY_POLICY_VERSION,
-            privacy_policy_accepted_at: new Date(),
-            updated_at: new Date(),
-        },
-        where: [{ field: "id", operator: "=", value: userId }],
-    }) as UsersInterface;
+    const current = await fetchUserOrThrow(userId);
+    // Already on this version (a double tap, two tabs): nothing new to record.
+    if (current.privacy_policy_version === PRIVACY_POLICY_VERSION) return toPublicUser(current);
+    const user = await acceptPolicyRepository(userId, PRIVACY_POLICY_VERSION, data.source ?? "prompt");
     return toPublicUser(user);
 }
 
 /**
- * Turns AI weekly check-ins on or off. Turning them on needs the current
- * privacy policy accepted (its AI section says exactly what is sent) and
- * `consent: true` from the app's warning sheet.
+ * Turns AI weekly check-ins on or off. Turning them on needs `consent: true`
+ * from the app's consent sheet and a policy that covers AI check-ins: either
+ * already accepted, or `policy_version` = the current version, which the
+ * sheet sends when its checkbox also accepts the current policy. The opt-in
+ * or opt-out and any policy acceptance are logged in user_consents.
  */
 export const setAiCheckinsService = async ({
     userId,
     data,
 }: {
     userId: string;
-    data: { enabled?: unknown; consent?: unknown };
+    data: { enabled?: unknown; consent?: unknown; policy_version?: string };
 }) => {
     if (typeof data?.enabled !== "boolean") {
         throw new AppError("enabled must be true or false", 400);
     }
     const user = await fetchUserOrThrow(userId);
+    let alsoAcceptPolicy = false;
     if (data.enabled) {
-        if (user.privacy_policy_version !== PRIVACY_POLICY_VERSION) {
-            throw new AppError("Accept the current privacy policy before turning on AI check-ins", 409);
-        }
         if (data.consent !== true) {
             throw new AppError("Turning on AI check-ins needs your consent", 400);
         }
+        alsoAcceptPolicy = user.privacy_policy_version !== PRIVACY_POLICY_VERSION
+            && data.policy_version === PRIVACY_POLICY_VERSION;
+        if (!alsoAcceptPolicy && needsPolicyReconsent(user.privacy_policy_version ?? null, true)) {
+            throw new AppError("Accept the current privacy policy before turning on AI check-ins", 409);
+        }
     }
-    const updated = await updateOneInTable({
-        table: USERS_TABLE,
-        data: {
-            ai_checkins_enabled: data.enabled,
-            ai_checkins_consented_at: data.enabled ? new Date() : null,
-            updated_at: new Date(),
-        },
-        where: [{ field: "id", operator: "=", value: userId }],
-    }) as UsersInterface;
+    const updated = await setAiCheckinsRepository(userId, {
+        enabled: data.enabled,
+        version: PRIVACY_POLICY_VERSION,
+        source: data.enabled ? "ai_consent" : "settings",
+        alsoAcceptPolicy,
+    });
     if (!data.enabled) {
         // "Get weekly AI insights" / "No AI check-in this week" notices no longer apply.
         await clearNotificationGroupRepository(userId, "weekly_checkin");
