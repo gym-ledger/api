@@ -14,6 +14,9 @@ export interface UserSessionsInterface {
     created_at: Date;
 
     last_used_at: Date;
+
+    /** 'web' | 'ios' | 'android' (migration 046, see auth/sessionTransport.ts). */
+    platform: "web" | "ios" | "android";
 }
 
 export const USER_SESSIONS_SCHEMA = {
@@ -45,5 +48,9 @@ export const USER_SESSIONS_SCHEMA = {
     last_used_at: {
         type: "date",
         allowNull: true,
+    },
+    platform: {
+        type: "string",
+        allowNull: false,
     },
 }

@@ -15,20 +15,31 @@ import { captcha } from "../../infrastructure/captcha/index.js";
 import { AppError } from "../../shared/errors/AppError.js";
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "../../utils/refreshTokenCookie.js";
 import { loadTestAccountsOpenTo } from "../../middleware/loadTestClient.js";
+import { clientPlatformOf, refreshTokenSourceOf } from "./sessionTransport.js";
 
 /**
- * Moves the refresh token out of the JSON body and into the httpOnly cookie,
- * so it is never readable by page JavaScript.
+ * The one place the refresh token's transport branches (sessionTransport.ts).
+ * Web: the token moves out of the JSON body into the httpOnly cookie, so it
+ * is never readable by page JavaScript. Native app: it stays in the body for
+ * the app's secure storage, and no cookie is set.
  */
 const sendSession = <T extends { refreshToken: string, refreshTokenExpiresAt: Date }>(
     res: Response,
     message: string,
     session: T,
+    transport: "cookie" | "body",
 ) => {
+    if (transport === "body") {
+        responseSend(res, 200, message, session);
+        return;
+    }
     const { refreshToken, refreshTokenExpiresAt, ...body } = session;
     setRefreshCookie(res, "user", refreshToken, refreshTokenExpiresAt);
     responseSend(res, 200, message, body);
 }
+
+/** Native sign-ins (X-Client-Platform: ios|android) get their token in the body. */
+const signInTransport = (platform: ReturnType<typeof clientPlatformOf>) => platform === "web" ? "cookie" : "body";
 
 export const getAuthConfig = async (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -65,9 +76,10 @@ export const sendOtpForLogin = async (req: Request, res: Response, next: NextFun
 
 export const verifyOtpForLogin = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await verifyOtpForLoginService(req.body);
+        const platform = clientPlatformOf(req);
+        const data = await verifyOtpForLoginService(req.body, platform);
 
-        sendSession(res, "Login successful", data);
+        sendSession(res, "Login successful", data, signInTransport(platform));
     } catch (error) {
         next(error);
     }
@@ -75,9 +87,10 @@ export const verifyOtpForLogin = async (req: Request, res: Response, next: NextF
 
 export const loginWithPassword = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await loginWithPasswordService(req.body);
+        const platform = clientPlatformOf(req);
+        const data = await loginWithPasswordService(req.body, platform);
 
-        sendSession(res, "Login successful", data);
+        sendSession(res, "Login successful", data, signInTransport(platform));
     } catch (error) {
         next(error);
     }
@@ -116,9 +129,13 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 
 export const refreshTokens = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const data = await refreshTokensService(readRefreshCookie(req, "user"), loadTestAccountsOpenTo(req));
+        // Header mode (native app) never reads the cookie and never sets one.
+        const source = refreshTokenSourceOf(req);
+        const data = source.mode === "header"
+            ? await refreshTokensService(source.token, "header", loadTestAccountsOpenTo(req))
+            : await refreshTokensService(readRefreshCookie(req, "user"), "cookie", loadTestAccountsOpenTo(req));
 
-        sendSession(res, "Tokens refreshed successfully", data);
+        sendSession(res, "Tokens refreshed successfully", data, source.mode === "header" ? "body" : "cookie");
     } catch (error) {
         // The cookie is deliberately not cleared on a 401: when two tabs
         // refresh at once, the loser's 401 can arrive after the winner's
@@ -129,9 +146,13 @@ export const refreshTokens = async (req: Request, res: Response, next: NextFunct
 
 export const logout = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        await logoutService(readRefreshCookie(req, "user"));
-
-        clearRefreshCookie(res, "user");
+        const source = refreshTokenSourceOf(req);
+        if (source.mode === "header") {
+            await logoutService(source.token, "header");
+        } else {
+            await logoutService(readRefreshCookie(req, "user"), "cookie");
+            clearRefreshCookie(res, "user");
+        }
         responseSend(res, 200, "Logged out successfully", null);
     } catch (error) {
         next(error);
