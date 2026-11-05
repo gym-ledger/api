@@ -19,6 +19,7 @@ import { deleteUserSessionRepository, fetchUserSessionByHashRepository, rotateUs
 import { REFRESH_REUSE_GRACE_MS } from "../../config/constants.js";
 import { isLoadTestEmail } from "../../middleware/loadTestClient.js";
 import { publishUserEvent } from "../../infrastructure/redis/userEvents.js";
+import { platformMatchesMode, type RefreshTokenSource, type SessionPlatform } from "./sessionTransport.js";
 
 const OTP_TTL_MS = 1000 * 60 * 5;
 const OTP_MAX_ATTEMPTS = 3;
@@ -278,8 +279,12 @@ const assertOtpValid = async (otpObj: OtpAuthInterface | null, otp: string, { al
     }
 }
 
-/** Opens a new refresh-token session for the user and returns the login payload. */
-const createUserSession = async (userObj: UsersInterface) => {
+/**
+ * Opens a new refresh-token session for the user and returns the login
+ * payload. `platform` decides how its refresh token may travel later (see
+ * sessionTransport.ts).
+ */
+const createUserSession = async (userObj: UsersInterface, platform: SessionPlatform) => {
     const refreshToken = generateRefreshToken();
     const refreshTokenExpiresAt = new Date(Date.now() + SESSION_TTL_MS);
     const sessionObj = await addOneInTable({
@@ -288,6 +293,7 @@ const createUserSession = async (userObj: UsersInterface) => {
             user_id: userObj.id,
             refresh_token_hash: hashToken(refreshToken),
             expires_at: refreshTokenExpiresAt,
+            platform,
         },
     }) as UserSessionsInterface;
     const { accessToken, accessTokenExpiresAt } = await generateUserAccessToken({
@@ -302,7 +308,7 @@ export const sendOtpForLoginService = async (data: IdentityInput) => {
     await issueOtp({ method, phoneNumber, email, purpose: "login" });
 }
 
-export const verifyOtpForLoginService = async (data: IdentityInput & { otp: string }) => {
+export const verifyOtpForLoginService = async (data: IdentityInput & { otp: string }, platform: SessionPlatform) => {
     const { method, phoneNumber, email, otp } = data ?? {};
     const otpObj = await getOtpObj(method, phoneNumber, email, "login");
     await assertOtpValid(otpObj, otp, { allowMasterOtp: true });
@@ -323,10 +329,10 @@ export const verifyOtpForLoginService = async (data: IdentityInput & { otp: stri
         }) as UsersInterface;
     }
 
-    return await createUserSession(userObj);
+    return await createUserSession(userObj, platform);
 }
 
-export const loginWithPasswordService = async (data: IdentityInput & { password: string }) => {
+export const loginWithPasswordService = async (data: IdentityInput & { password: string }, platform: SessionPlatform) => {
     const { method, phoneNumber, email, password } = data ?? {};
     if (!password || typeof password !== "string") {
         throw new AppError("Password is required", 400);
@@ -338,7 +344,7 @@ export const loginWithPasswordService = async (data: IdentityInput & { password:
     if (!await verifyPasswordConstantTime(password, userObj?.password_hash) || !userObj) {
         throw new AppError("Invalid credentials", 401);
     }
-    return await createUserSession(userObj);
+    return await createUserSession(userObj, platform);
 }
 
 /**
@@ -462,15 +468,22 @@ export const verifyAccountDeletionCodeService = async (user: UsersInterface, otp
 /**
  * `loadTestAccountsAllowed` false (production, not the load tester): a session
  * of a seeded load-test account is refused like an unknown token.
+ * `mode` is how the token arrived. A session only refreshes over its own
+ * platform's transport; otherwise it is refused like an unknown token.
  */
-export const refreshTokensService = async (refreshToken: string | undefined, loadTestAccountsAllowed: boolean) => {
+export const refreshTokensService = async (
+    refreshToken: string | undefined,
+    mode: RefreshTokenSource["mode"],
+    loadTestAccountsAllowed: boolean,
+) => {
     // 401, not 400: the clients treat any non-401 failure as transient and keep the session.
     if (!refreshToken) {
         throw new AppError("Refresh token is required", 401);
     }
     const oldHash = hashToken(refreshToken);
     const sessionObj = await fetchUserSessionByHashRepository("refresh_token_hash", oldHash);
-    if (sessionObj && !loadTestAccountsAllowed && isLoadTestEmail(sessionObj.email)) {
+    if (sessionObj && (!platformMatchesMode(sessionObj.platform, mode)
+        || (!loadTestAccountsAllowed && isLoadTestEmail(sessionObj.email)))) {
         throw new AppError("Invalid refresh token", 401);
     }
     if (sessionObj) {
@@ -501,7 +514,7 @@ export const refreshTokensService = async (refreshToken: string | undefined, loa
         // Another refresh with this same token won the race; it is now the
         // previous token, so the grace path below hands back the winner's.
     }
-    return await refreshWithPreviousToken(oldHash, loadTestAccountsAllowed);
+    return await refreshWithPreviousToken(oldHash, mode, loadTestAccountsAllowed);
 }
 
 /**
@@ -510,9 +523,10 @@ export const refreshTokensService = async (refreshToken: string | undefined, loa
  * or two tabs refreshing at once). After it, the old token showing up again
  * means it was likely copied, so the session is ended.
  */
-const refreshWithPreviousToken = async (oldHash: string, loadTestAccountsAllowed: boolean) => {
+const refreshWithPreviousToken = async (oldHash: string, mode: RefreshTokenSource["mode"], loadTestAccountsAllowed: boolean) => {
     const sessionObj = await fetchUserSessionByHashRepository("previous_refresh_token_hash", oldHash);
     if (!sessionObj || sessionObj.revoked_at || sessionObj.expires_at < new Date()
+        || !platformMatchesMode(sessionObj.platform, mode)
         || (!loadTestAccountsAllowed && isLoadTestEmail(sessionObj.email))) {
         throw new AppError("Invalid refresh token", 401);
     }
@@ -539,7 +553,7 @@ const refreshWithPreviousToken = async (oldHash: string, loadTestAccountsAllowed
  * up, etc.) is treated as a no-op rather than an error, since the caller's
  * goal ("this token should no longer work") is already satisfied.
  */
-export const logoutService = async (refreshToken: string | undefined) => {
+export const logoutService = async (refreshToken: string | undefined, mode: RefreshTokenSource["mode"]) => {
     if (!refreshToken) {
         return;
     }
@@ -552,7 +566,8 @@ export const logoutService = async (refreshToken: string | undefined) => {
         }],
         useSoftDelete: false,
     }) as UserSessionsInterface | null;
-    if (!sessionObj) {
+    // A token sent over the other platform's transport ends nothing (as if unknown).
+    if (!sessionObj || !platformMatchesMode(sessionObj.platform, mode)) {
         return;
     }
     await deleteOneFromTable({
