@@ -1,6 +1,6 @@
 export const OTP_AUTH_TABLE = "otp_auth";
 
-export type OtpPurpose = "login" | "reset_password" | "delete_account";
+export type OtpPurpose = "login" | "reset_password" | "delete_account" | "email_change_auth" | "email_change";
 
 export interface OtpAuthInterface {
     id: string;
@@ -52,7 +52,7 @@ export const OTP_AUTH_SCHEMA = {
     },
     purpose: {
         type: "string",
-        enum: ["login", "reset_password"],
+        enum: ["login", "reset_password", "delete_account", "email_change_auth", "email_change"],
         default: "login",
         allowNull: false,
     },

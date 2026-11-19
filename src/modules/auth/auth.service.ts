@@ -53,6 +53,9 @@ const validateIdentity = (method: string, phoneNumber: PhoneNumber | undefined, 
     }
 }
 
+/** Throws 400 unless `email` looks like an email address (the same rule sign-in uses). */
+export const assertValidEmail = (email: string) => validateIdentity("email", undefined, email);
+
 const getOtpObj = async (method: string, phoneNumber: PhoneNumber | undefined, email: string | null | undefined, purpose: OtpPurpose) => {
     validateIdentity(method, phoneNumber, email);
     const identityWhere = method === "phone"
@@ -219,9 +222,13 @@ const deliverOtp = async ({ method, phoneNumber, email, otp, purpose, swallowFai
         logger.info({ purpose, method, otp }, "OTP issued (development only)");
     }
 
-    const template: OtpTemplate = purpose === "reset_password"
-        ? "otp-reset-password"
-        : purpose === "delete_account" ? "otp-delete-account" : "otp-login";
+    const template = ({
+        login: "otp-login",
+        reset_password: "otp-reset-password",
+        delete_account: "otp-delete-account",
+        email_change_auth: "otp-email-change-auth",
+        email_change: "otp-email-change",
+    } satisfies Record<OtpPurpose, OtpTemplate>)[purpose];
     try {
         // validateIdentity (via getOtpObj in issueOtp) has checked these are set.
         if (method === "phone") {
@@ -451,16 +458,39 @@ const identityOf = (user: Pick<UsersInterface, "email" | "phone_country_code" | 
     ? { method: "email", email: user.email, phoneNumber: undefined }
     : { method: "phone", email: undefined, phoneNumber: { code: user.phone_country_code, number: user.phone_number } };
 
-/** Sends a code that confirms deleting the account, for users without a password. */
-export const sendAccountDeletionCodeService = async (user: UsersInterface) => {
-    await issueOtp({ ...identityOf(user), purpose: "delete_account" });
+/** Purposes of a code that confirms a signed-in user is who they say, for users without a password. */
+type IdentityConfirmationPurpose = "delete_account" | "email_change_auth";
+
+/** Sends a code to the user's own email (or phone) confirming a sensitive action. */
+export const sendIdentityConfirmationCodeService = async (user: UsersInterface, purpose: IdentityConfirmationPurpose) => {
+    await issueOtp({ ...identityOf(user), purpose });
     return { sent_to: user.email ? "email" : "phone" };
 }
 
-/** Throws unless `otp` is the current account-deletion code; the code is used up either way it succeeds. */
-export const verifyAccountDeletionCodeService = async (user: UsersInterface, otp: string) => {
+/** Throws unless `otp` is the user's current code for `purpose`; the code is used up when it succeeds. */
+export const verifyIdentityConfirmationCodeService = async (user: UsersInterface, otp: string, purpose: IdentityConfirmationPurpose) => {
     const { method, email, phoneNumber } = identityOf(user);
-    const otpObj = await getOtpObj(method, phoneNumber, email, "delete_account");
+    const otpObj = await getOtpObj(method, phoneNumber, email, purpose);
+    await assertOtpValid(otpObj, otp, { allowMasterOtp: false });
+    await deleteOtpObj(otpObj!);
+}
+
+/** Sends a code that confirms deleting the account, for users without a password. */
+export const sendAccountDeletionCodeService = async (user: UsersInterface) =>
+    await sendIdentityConfirmationCodeService(user, "delete_account");
+
+/** Throws unless `otp` is the current account-deletion code; the code is used up when it succeeds. */
+export const verifyAccountDeletionCodeService = async (user: UsersInterface, otp: string) =>
+    await verifyIdentityConfirmationCodeService(user, otp, "delete_account");
+
+/** Sends a code to an address a signed-in user wants as their email (format checked here). */
+export const sendNewEmailCodeService = async (email: string) => {
+    await issueOtp({ method: "email", email, phoneNumber: undefined, purpose: "email_change" });
+}
+
+/** Throws unless `otp` is the current code sent to the new address; the code is used up when it succeeds. */
+export const verifyNewEmailCodeService = async (email: string, otp: string) => {
+    const otpObj = await getOtpObj("email", undefined, email, "email_change");
     await assertOtpValid(otpObj, otp, { allowMasterOtp: false });
     await deleteOtpObj(otpObj!);
 }

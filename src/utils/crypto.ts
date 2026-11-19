@@ -34,3 +34,32 @@ export function decryptGraceToken(value: string | null | undefined) {
         return null;
     }
 }
+
+// Key for email-change tokens; its own HKDF label, so it can't be mixed up with any other token.
+const emailChangeKey = Buffer.from(crypto.hkdfSync("sha256", env.ACCESS_TOKEN_SECRET, "", "email-change-token", 32));
+
+const signEmailChange = (userId: string, expiresAtMs: number) => crypto
+    .createHmac("sha256", emailChangeKey)
+    .update(`${userId}.${expiresAtMs}`)
+    .digest("base64url");
+
+/**
+ * A short-lived token showing that `userId` just confirmed it's them (password
+ * or code), so the rest of the email change needn't ask again. "expiresAtMs.mac".
+ */
+export function createEmailChangeToken(userId: string, ttlMs: number, now = Date.now()) {
+    const expiresAtMs = now + ttlMs;
+    return `${expiresAtMs}.${signEmailChange(userId, expiresAtMs)}`;
+}
+
+/** True only for an unexpired token made by createEmailChangeToken for this user. */
+export function isValidEmailChangeToken(token: string | null | undefined, userId: string, now = Date.now()) {
+    const [expires, mac, ...rest] = (token ?? "").split(".");
+    const expiresAtMs = Number(expires);
+    if (rest.length || !mac || !/^[0-9]+$/.test(expires) || expiresAtMs < now) {
+        return false;
+    }
+    const expected = Buffer.from(signEmailChange(userId, expiresAtMs));
+    const given = Buffer.from(mac);
+    return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}

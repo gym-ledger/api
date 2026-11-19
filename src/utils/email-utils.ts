@@ -4,7 +4,7 @@ import { OtpDeliveryError } from "../shared/errors/OtpDeliveryError.js";
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const PROVIDER_TIMEOUT_MS = 10_000;
 
-export type OtpTemplate = "otp-login" | "otp-reset-password" | "otp-delete-account";
+export type OtpTemplate = "otp-login" | "otp-reset-password" | "otp-delete-account" | "otp-email-change-auth" | "otp-email-change";
 
 /** True when Resend is configured; otherwise emails can't be sent. */
 export const isEmailDeliveryConfigured = () => !!env.RESEND_API_KEY && !!env.EMAIL_FROM;
@@ -34,6 +34,16 @@ const buildOtpEmail = (otp: string, template: OtpTemplate, ttlMinutes: number) =
             subject: `${otp} is your ${appName} account deletion code`,
             ignoreNote: "If you didn't ask to delete your account, don't share this code with anyone; your account stays as it is.",
         },
+        "otp-email-change-auth": {
+            action: "confirm changing your email",
+            subject: `${otp} is your ${appName} code to change your email`,
+            ignoreNote: "If you didn't ask to change your email, don't share this code with anyone; your email stays as it is.",
+        },
+        "otp-email-change": {
+            action: "confirm this is your new email address",
+            subject: `${otp} is your ${appName} email confirmation code`,
+            ignoreNote: "If you didn't ask to use this address, you can ignore this email; it won't be added to any account.",
+        },
     }[template];
     const text = [
         `Your ${appName} code is ${otp}.`,
@@ -59,21 +69,14 @@ const buildOtpEmail = (otp: string, template: OtpTemplate, ttlMinutes: number) =
 };
 
 /**
- * Sends an OTP email through Resend's REST API. Resolves once Resend has
+ * Sends one email through Resend's REST API. Resolves once Resend has
  * accepted the message; throws OtpDeliveryError otherwise (bad key, unverified
  * sender domain, rate limit, network failure, timeout).
  */
-export const sendOtpEmail = async ({ email, otp, template, ttlMinutes }: {
-    email: string,
-    otp: string,
-    template: OtpTemplate,
-    ttlMinutes: number,
-}): Promise<void> => {
+const sendEmail = async ({ to, subject, text, html }: { to: string, subject: string, text: string, html: string }): Promise<void> => {
     if (!env.RESEND_API_KEY || !env.EMAIL_FROM) {
         throw new OtpDeliveryError("resend", "Email delivery is not configured (RESEND_API_KEY / EMAIL_FROM)");
     }
-
-    const { subject, text, html } = buildOtpEmail(otp, template, ttlMinutes);
 
     let res: Response;
     try {
@@ -85,7 +88,7 @@ export const sendOtpEmail = async ({ email, otp, template, ttlMinutes }: {
             },
             body: JSON.stringify({
                 from: env.EMAIL_FROM,
-                to: [email],
+                to: [to],
                 subject,
                 text,
                 html,
@@ -107,4 +110,57 @@ export const sendOtpEmail = async ({ email, otp, template, ttlMinutes }: {
             message: body?.message,
         });
     }
+};
+
+/** Sends an OTP email; throws OtpDeliveryError when it can't (see sendEmail). */
+export const sendOtpEmail = async ({ email, otp, template, ttlMinutes }: {
+    email: string,
+    otp: string,
+    template: OtpTemplate,
+    ttlMinutes: number,
+}): Promise<void> => {
+    const { subject, text, html } = buildOtpEmail(otp, template, ttlMinutes);
+    await sendEmail({ to: email, subject, text, html });
+};
+
+/** "jo***@gmail.com": enough for the owner to recognise, not enough to read off. */
+export const maskEmail = (email: string) => {
+    const at = email.lastIndexOf("@");
+    if (at <= 0) {
+        return "***";
+    }
+    const local = email.slice(0, at);
+    return `${local.slice(0, Math.min(2, local.length - 1) || 1)}***${email.slice(at)}`;
+};
+
+/**
+ * Tells the old address that the account's email was changed, so its owner
+ * notices if they didn't do it. Throws OtpDeliveryError when it can't be sent.
+ */
+export const sendEmailChangedNotice = async ({ to, newEmail }: { to: string, newEmail: string }): Promise<void> => {
+    const appName = env.APP_NAME;
+    const masked = maskEmail(newEmail);
+    // TODO(support): point this at a support contact once one exists.
+    const note = "If you didn't make this change, someone else may have access to your account.";
+    const text = [
+        `The email on your ${appName} account was changed to ${masked}.`,
+        "",
+        "This address won't be used to sign in or for account emails any more.",
+        "",
+        note,
+    ].join("\n");
+    const html = `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#f4f5f6;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:440px;margin:0 auto;background:#fff;border-radius:12px;">
+      <tr><td style="padding:32px;">
+        <p style="margin:0 0 8px;font-size:14px;color:#555;">${escapeHtml(appName)}</p>
+        <p style="margin:0 0 16px;font-size:16px;">The email on your account was changed to <strong>${escapeHtml(masked)}</strong>.</p>
+        <p style="margin:0 0 16px;font-size:14px;">This address won't be used to sign in or for account emails any more.</p>
+        <p style="margin:0;font-size:13px;color:#555;">${escapeHtml(note)}</p>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+    await sendEmail({ to, subject: `Your ${appName} email was changed`, text, html });
 };

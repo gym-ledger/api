@@ -426,3 +426,26 @@ export const purgeLoadTestAccountRepository = async (userId: string): Promise<bo
         client.release();
     }
 }
+
+// ---------------------------------------------------------------------------
+// Email change
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets the account's email. `null` when another account took the address in
+ * the meantime (unique index uq_users_email); the updated row otherwise.
+ */
+export const updateUserEmailRepository = async (userId: string, email: string) => {
+    try {
+        const { rows } = await pg.query(
+            `UPDATE users SET email = $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING *`,
+            [userId, email],
+        );
+        return rows[0] ?? null;
+    } catch (error) {
+        if ((error as { code?: string }).code === "23505") {
+            return null;
+        }
+        throw error;
+    }
+}

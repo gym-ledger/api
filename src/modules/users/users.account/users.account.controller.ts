@@ -8,6 +8,9 @@ import {
     requestAccountDeletionService,
     requestDataExportService,
     sendDeletionCodeService,
+    sendEmailChangeCodeService,
+    sendEmailChangeConfirmCodeService,
+    verifyEmailChangeService,
 } from "./users.account.service.js";
 
 export const getAccountData = async (req: Request, res: Response, next: NextFunction) => {
@@ -65,6 +68,33 @@ export const cancelAccountDeletion = async (req: Request, res: Response, next: N
     try {
         const data = await cancelAccountDeletionService(req.userId as string);
         return responseSend(res, 200, "Account deletion cancelled", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const sendEmailChangeConfirmCode = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await sendEmailChangeConfirmCodeService(req.userId as string);
+        return responseSend(res, 200, "Code sent successfully", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const sendEmailChangeCode = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await sendEmailChangeCodeService(req.userId as string, req.body);
+        return responseSend(res, 200, "Code sent to your new email", data);
+    } catch (error) {
+        next(error);
+    }
+}
+
+export const verifyEmailChange = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const data = await verifyEmailChangeService(req.userId as string, req.body);
+        return responseSend(res, 200, "Email changed successfully", data);
     } catch (error) {
         next(error);
     }
